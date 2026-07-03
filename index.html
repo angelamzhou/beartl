@@ -1,0 +1,1859 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>THE BEAR: One Last Service</title>
+<style>
+  :root{
+    --bg:#0d1117; --panel:#161d27; --panel2:#1d2735; --line:#2e3d52;
+    --steel:#8fa8c4; --bright:#dce8f5; --accent:#f2a03d; --danger:#e05252;
+    --ok:#5fbf77; --ticket:#f4efe4; --ink:#26221a;
+    font-size:16px;
+  }
+  *{box-sizing:border-box; margin:0; padding:0;}
+  body{background:var(--bg); color:var(--bright); font-family:"Menlo","Consolas",monospace; height:100vh; overflow:hidden;}
+  #app{height:100vh; display:flex; flex-direction:column;}
+  .screen{display:none; flex:1; flex-direction:column; overflow:auto; padding:18px;}
+  .screen.on{display:flex;}
+  /* .center also sets display:flex and would otherwise override the hide rule above */
+  .screen:not(.on){display:none !important;}
+  h1{font-size:2.4rem; letter-spacing:.35em; color:var(--accent); text-align:center;}
+  h2{color:var(--accent); letter-spacing:.15em; margin-bottom:10px;}
+  .sub{color:var(--steel); text-align:center; letter-spacing:.2em; margin-top:6px;}
+  .panel{background:var(--panel); border:1px solid var(--line); border-radius:6px; padding:14px;}
+  button{background:var(--panel2); color:var(--bright); border:1px solid var(--line); border-radius:4px;
+    padding:8px 14px; font-family:inherit; font-size:.95rem; cursor:pointer;}
+  button:hover{border-color:var(--accent); color:var(--accent);}
+  button:disabled{opacity:.35; cursor:default;}
+  button:disabled:hover{border-color:var(--line); color:var(--bright);}
+  .big{font-size:1.1rem; padding:12px 26px; letter-spacing:.12em;}
+  .center{display:flex; flex-direction:column; align-items:center; justify-content:center; gap:18px;}
+  .muted{color:var(--steel);}
+  .gold{color:var(--accent);}
+  .red{color:var(--danger);}
+  .green{color:var(--ok);}
+
+  /* top bar */
+  #topbar{display:none; gap:18px; align-items:center; padding:10px 18px; background:var(--panel);
+    border-bottom:2px solid var(--line); font-size:.95rem; flex-wrap:wrap;}
+  #topbar.on{display:flex;}
+  .stat{display:flex; align-items:center; gap:7px;}
+  .barwrap{width:150px; height:12px; background:#0a0e14; border:1px solid var(--line); border-radius:3px; overflow:hidden;}
+  .barfill{height:100%; background:var(--ok); transition:width .2s;}
+
+  /* map */
+  .doors{display:flex; flex-direction:column; gap:14px; align-items:center; margin-top:14px;}
+  .door{width:290px; background:var(--panel); border:2px solid var(--line); border-radius:8px;
+    padding:18px; cursor:pointer; text-align:center;}
+  .door:hover{border-color:var(--accent);}
+  .door .icon{font-size:2.6rem;}
+  .door h3{color:var(--accent); letter-spacing:.12em; margin:10px 0 8px;}
+  .door p{color:var(--steel); font-size:.85rem; line-height:1.5;}
+  .progress-dots{display:flex; gap:6px; justify-content:center; margin:14px 0;}
+  .pdot{width:14px; height:14px; border-radius:50%; border:1px solid var(--line); background:var(--panel2);}
+  .pdot.done{background:var(--accent); border-color:var(--accent);}
+  .pdot.final{border-color:var(--danger);}
+  .pdot.final.done{background:var(--danger);}
+
+  /* service layout */
+  #service{padding:10px 14px; gap:10px;}
+  #svc-main{display:flex; gap:12px; flex:1; min-height:0;}
+  /* the kitchen floor */
+  #floor{position:relative; flex:1.35; min-width:340px; min-height:440px; border:2px solid var(--line); border-radius:8px; overflow:hidden;
+    background:#0f141c;
+    background-image:repeating-linear-gradient(90deg,transparent 0 45px,#ffffff06 45px 47px),
+      repeating-linear-gradient(0deg,transparent 0 45px,#ffffff06 45px 47px);}
+  .zone{position:absolute; border:1px solid #45566e; border-radius:7px; padding:6px 8px; cursor:pointer; overflow:hidden;
+    background:linear-gradient(180deg,#39424e,#2b333d 45%,#333c47);
+    box-shadow:inset 0 1px 0 #ffffff2e, inset 0 -6px 12px #0004, 0 4px 10px #0007;}
+  .zone:hover{border-color:var(--steel);}
+  .zone.target:hover{border-color:var(--accent); box-shadow:0 0 12px #f2a03d66;}
+  .zone.isle{background:linear-gradient(105deg,#9fb0c2,#7b8da0 25%,#b7c6d6 40%,#71839a 62%,#8fa2b5);
+    border:2px solid #a9bccf; box-shadow:inset 0 2px 0 #ffffff88, inset 0 -8px 14px #0005, 0 6px 14px #000a;}
+  .zone.isle .zlabel{color:#1d2733;}
+  .zone.isle .zstat{color:#2c3a4a;}
+  .zone.walkinz{background:linear-gradient(180deg,#243242,#1b2634); border-style:dashed; cursor:default;}
+  .zlabel{font-size:.78rem; letter-spacing:.08em; color:var(--steel); font-weight:bold; white-space:nowrap;}
+  .zlabel .zlvl{color:var(--accent); float:right; font-size:.7rem;}
+  .zstat{font-size:.74rem; color:var(--steel); margin-top:3px; white-space:nowrap;}
+  .zone.onfire{border-color:var(--danger); animation:flick .5s infinite alternate;}
+  .zone.hands{border-color:var(--accent); animation:flick .6s infinite alternate;}
+  .zone.broken{border-color:#a08030; filter:saturate(.6);}
+  .hazfx{position:absolute; right:6px; bottom:3px; font-size:1.5rem; pointer-events:none; animation:bob .8s ease-in-out infinite;}
+  .chef{position:absolute; width:64px; margin-left:-32px; text-align:center; cursor:pointer; z-index:5;
+    transition:left 1.05s ease-in-out, top 1.05s ease-in-out; transform:translateY(-92%);}
+  .chef .face{font-size:1.65rem; display:block; line-height:1.1; animation:bob 1.7s ease-in-out infinite; position:relative;}
+  .chef .mood{position:absolute; top:-10px; right:4px; font-size:.85rem;}
+  .chef.moving .face{animation:waddle .4s ease-in-out infinite;}
+  .chef.cooling{filter:saturate(.4) brightness(.85);}
+  .chef .tag{font-size:.68rem; background:#000b; border:1px solid transparent; border-radius:6px; padding:0 4px; color:var(--bright); white-space:nowrap;}
+  .chef.sel .face{filter:drop-shadow(0 0 7px var(--accent));}
+  .chef.sel .tag{color:var(--accent); border-color:var(--accent);}
+  .chef .sbar{display:block; height:4px; background:#000a; border-radius:2px; overflow:hidden; margin:2px 10px 0;}
+  .chef .sbar>i{display:block; height:100%; width:0;}
+  .bubble{position:absolute; z-index:9; transform:translate(-50%,-230%); background:#0e1420f0; border:1px solid var(--steel);
+    color:var(--bright); font-size:.74rem; padding:3px 10px; border-radius:9px; max-width:200px; text-align:center;
+    pointer-events:none; animation:fadeout 3.4s forwards; line-height:1.4;}
+  @keyframes flick{from{box-shadow:0 0 6px #e0525266;} to{box-shadow:0 0 16px #e05252cc;}}
+  @keyframes bob{0%,100%{transform:translateY(0);}50%{transform:translateY(-3px);}}
+  @keyframes waddle{0%,100%{transform:rotate(-7deg);}50%{transform:rotate(7deg);}}
+  .chip{display:inline-flex; align-items:center; gap:4px; background:var(--panel2); border:1px solid var(--line);
+    border-radius:12px; padding:2px 9px; font-size:.82rem; cursor:pointer;}
+  .chip.sel{border-color:var(--accent); color:var(--accent); box-shadow:0 0 6px #f2a03d55;}
+  .chip.moving{opacity:.45;}
+  .minibar{width:100%; height:6px; background:#0a0e14; border-radius:2px; overflow:hidden; margin-top:5px;}
+  .minibar>div{height:100%;}
+
+  /* tickets */
+  #rail{flex:1; display:flex; flex-direction:column; gap:8px; overflow:auto; min-width:300px;}
+  .tkt{background:var(--ticket); color:var(--ink); border-radius:3px; padding:8px 10px;
+    font-size:.88rem; box-shadow:2px 2px 0 #00000066; position:relative;}
+  .tkt .thead{display:flex; justify-content:space-between; border-bottom:1px dashed #999; padding-bottom:3px; margin-bottom:5px; font-weight:bold;}
+  .tkt .dish{display:flex; justify-content:space-between; align-items:center; gap:6px; padding:1px 0;}
+  .tkt .dish.done{text-decoration:line-through; color:#889;}
+  .dishbar{width:70px; height:7px; background:#d8d2c2; border:1px solid #aaa; border-radius:2px; overflow:hidden;}
+  .dishbar>div{height:100%; background:#c8722a;}
+  .patience{height:8px; background:#d8d2c2; border-radius:2px; overflow:hidden; margin-top:6px;}
+  .patience>div{height:100%;}
+  .b86{font-size:.62rem; padding:0 5px; background:#eee; color:#a33; border:1px solid #a33; border-radius:2px; line-height:1.4;}
+  .plated-tag{color:#2a7a3d; font-weight:bold; font-size:.75rem;}
+
+  #roster{display:flex; gap:8px; flex-wrap:wrap; padding:8px; background:var(--panel); border:1px solid var(--line); border-radius:6px;}
+  #svc-banner{color:var(--steel); font-size:.82rem; text-align:center;}
+  #pauseveil{position:fixed; top:58px; left:50%; transform:translateX(-50%); background:#000d;
+    border:1px solid var(--accent); border-radius:8px; padding:8px 26px; display:none; text-align:center;
+    font-size:1rem; letter-spacing:.2em; color:var(--accent); z-index:50; flex-direction:column; gap:3px; pointer-events:none;}
+  #pauseveil.on{display:flex;}
+  #pauseveil .hint{font-size:.75rem; letter-spacing:.1em; color:var(--steel);}
+  #comphover{position:fixed; z-index:80; background:#0e1420e6; border:1px solid var(--accent); border-radius:8px;
+    padding:10px 14px; pointer-events:none; display:none; max-width:340px; font-size:.85rem; line-height:1.6;}
+
+  /* toasts */
+  #toasts{position:fixed; top:64px; left:50%; transform:translateX(-50%); z-index:60; display:flex; flex-direction:column; gap:6px; pointer-events:none;}
+  .toast{background:#000d; border:1px solid var(--accent); color:var(--bright); padding:7px 16px; border-radius:4px;
+    font-size:.85rem; animation:fadeout 3.5s forwards;}
+  @keyframes fadeout{0%{opacity:0; transform:translateY(-8px);} 8%{opacity:1; transform:none;} 80%{opacity:1;} 100%{opacity:0;}}
+
+  /* modal */
+  #modal{position:fixed; inset:0; background:#000b; display:none; align-items:center; justify-content:center; z-index:70; padding:20px;}
+  #modal.on{display:flex;}
+  #modalbox{max-width:620px; width:100%; background:var(--panel); border:2px solid var(--accent); border-radius:8px; padding:24px;}
+  #modalbox h2{margin-bottom:12px;}
+  #modalbox .body{color:var(--bright); line-height:1.65; font-size:.94rem; margin-bottom:18px; white-space:pre-wrap;}
+  #modalbox .choices{display:flex; flex-direction:column; gap:10px;}
+  #modalbox .choices button{text-align:left; line-height:1.4;}
+
+  /* crew sheet / shop rows */
+  .row{display:flex; justify-content:space-between; align-items:center; gap:12px; padding:9px 6px; border-bottom:1px solid var(--line); font-size:.9rem;}
+  .row:last-child{border-bottom:none;}
+  .dots{letter-spacing:2px; color:var(--accent);}
+  .cols{display:flex; gap:16px; flex-wrap:wrap; align-items:flex-start; justify-content:center;}
+  .cols .panel{min-width:330px; max-width:460px; flex:1;}
+  .keyhint{color:var(--steel); font-size:.84rem; text-align:center; margin-top:8px;}
+</style>
+</head>
+<body>
+<div id="app">
+  <div id="topbar">
+    <div class="stat">🐻 <b>THE BEAR</b></div>
+    <div class="stat">DAY <span id="ui-day">1</span>/12</div>
+    <div class="stat">REP <div class="barwrap"><div class="barfill" id="ui-repbar"></div></div> <span id="ui-rep"></span></div>
+    <div class="stat">💵 $<span id="ui-money">0</span></div>
+    <div class="stat">🚫 86-tokens: <span id="ui-tokens">0</span></div>
+    <div class="stat muted" id="ui-context"></div>
+    <button id="ui-snd" onclick="toggleSnd()" title="toggle sound" style="margin-left:auto; padding:3px 10px;">🔊</button>
+  </div>
+
+  <!-- TITLE -->
+  <div id="title" class="screen center on">
+    <h1>THE BEAR</h1>
+    <div class="sub">O N E &nbsp; L A S T &nbsp; S E R V I C E</div>
+    <div class="panel" style="max-width:640px; line-height:1.7; font-size:.92rem;">
+      <p class="gold" style="margin-bottom:10px;">CHICAGO. THE FINAL SEASON.</p>
+      <p>The money is almost gone. Cicero wants out. A storm is rolling in off the lake.
+      You have <b>twelve days</b> to run this kitchen through every service, every disaster,
+      and every Fak — and finish with one perfect night when it matters most.</p>
+      <p style="margin-top:10px;" class="muted">An FTL-style kitchen roguelike. Assign your brigade to stations,
+      clear tickets before diners walk, fight fires, keep the dish pit moving, and protect your
+      REPUTATION — when it hits zero, The Bear closes for good.</p>
+      <p style="margin-top:10px;" class="muted">⏸ SPACE pauses time (use it constantly — every second counts).
+      Click a chef, then click a station to move them. EXPO plates finished tickets: nothing leaves the kitchen without it.</p>
+      <p style="margin-top:10px;" class="muted">📦 Every dish fired burns product. Keep the walk-in stocked — perishables rot
+      overnight, prices move daily, and empty shelves mean 86'd items and walkouts. Ferment or dry-age what you can't use yet.</p>
+    </div>
+    <button class="big" onclick="startRun()">YES, CHEF — BEGIN</button>
+    <button class="big" id="btn-continue" style="display:none;" onclick="resumeRun()">CONTINUE — DAY <span id="cont-day"></span></button>
+  </div>
+
+  <!-- MAP -->
+  <div id="map" class="screen">
+    <h2 style="text-align:center;">SYSTEM CHECK — DAY <span id="map-day"></span></h2>
+    <div class="progress-dots" id="map-dots"></div>
+    <div class="cols" style="margin-bottom:8px;">
+      <div class="panel" id="crew-sheet" style="flex:1;"></div>
+    </div>
+    <p class="sub" style="letter-spacing:.1em;">PLAN THE MORNING — THEN OPEN THE DOORS</p>
+    <div class="doors" id="doors"></div>
+  </div>
+
+  <!-- SERVICE -->
+  <div id="service" class="screen">
+    <div id="svc-banner"></div>
+    <div id="svc-main">
+      <div id="floor"></div>
+      <div id="rail"></div>
+    </div>
+    <div id="roster"></div>
+    <div class="keyhint">SPACE pause · 1-8 select chef · click a station to send them (walking takes time) · [86] a dish to pull it off the menu · plated food needs a RUNNER (FOH) · watch the stress bars — pair strugglers with Tina</div>
+  </div>
+
+  <!-- SHOP -->
+  <div id="shop" class="screen">
+    <h2 style="text-align:center;">🚚 SUPPLIER RUN</h2>
+    <p class="sub" style="margin-bottom:14px;">“You want the good stuff, you pay for the good stuff.”</p>
+    <div class="cols">
+      <div class="panel" id="shop-items"></div>
+    </div>
+    <div class="center" style="margin-top:16px;"><button class="big" onclick="leaveShop()">BACK TO THE KITCHEN</button></div>
+  </div>
+
+  <!-- PREP LAB -->
+  <div id="lab" class="screen">
+    <h2 style="text-align:center;">📊 THE PREP LAB</h2>
+    <p class="sub" style="margin-bottom:12px;">MORNING PREP AS A TWO-STAGE STOCHASTIC PROGRAM</p>
+    <div class="cols">
+      <div class="panel" id="lab-model" style="max-width:520px;"></div>
+      <div class="panel" style="flex:1; min-width:400px;">
+        <div id="lab-controls"></div>
+        <div id="lab-results"></div>
+      </div>
+    </div>
+    <div class="center" style="margin-top:14px;"><button class="big" onclick="gotoMap()">BACK TO THE PASS</button></div>
+  </div>
+
+  <!-- END SCREENS -->
+  <div id="final" class="screen center">
+    <h1 id="final-h">*</h1>
+    <div class="panel" style="max-width:640px; line-height:1.8; font-size:.95rem;" id="final-body"></div>
+    <button class="big" onclick="location.reload()">RUN IT BACK</button>
+  </div>
+</div>
+
+<div id="pauseveil"><div>⏸ PAUSED — LOOK AROUND, MOVE YOUR PEOPLE</div><div class="hint">SPACE TO RESUME</div></div>
+<div id="comphover"></div>
+<div id="toasts"></div>
+<div id="modal"><div id="modalbox"><h2 id="modal-h"></h2><div class="body" id="modal-b"></div><div class="choices" id="modal-c"></div></div></div>
+
+<script>
+"use strict";
+/* ============================== DATA ============================== */
+const STATION_DEFS = [
+  {id:'expo',  name:'EXPO',          icon:'🖨️', desc:'plates finished tickets'},
+  {id:'stove', name:'HOT LINE',      icon:'🍳', desc:'mains, braises, sauces'},
+  {id:'garde', name:'GARDE MANGER',  icon:'🥗', desc:'cold side, bread, caviar'},
+  {id:'pastry',name:'PASTRY',        icon:'🍩', desc:'desserts & donuts'},
+  {id:'window',name:'BEEF WINDOW',   icon:'🥪', desc:'italian beef & sandwiches'},
+  {id:'foh',   name:'FRONT OF HOUSE',icon:'🎩', desc:'slows all patience loss'},
+  {id:'dish',  name:'DISH PIT',      icon:'🧽', desc:'pile-up slows the kitchen'},
+];
+const COOK_STATIONS = ['stove','garde','pastry','window'];
+
+const DISH_POOL = {
+  stove:[['Braised Short Rib',12,10],['Mushroom Risotto',10,9],['Duck, Cherry, Sage',14,12],['Mother Sauce Redo',9,8],['Beef Wellington',15,13]],
+  garde:[['Chicago-Style Salad',7,7],['Hamachi Crudo',9,9],['Focaccia Service',6,6],['Caviar & Crisp',10,11]],
+  pastry:[['The Donut',7,7],['Chocolate Banana',8,8],['Sorbet Trio',6,6],['Cannoli Redux',9,9]],
+  window:[['Italian Beef, Wet',6,6],['Beef w/ Giardiniera',7,7],['Chicago Dog (No Ketchup)',5,5],['Mortadella Special',8,8]],
+};
+
+/* R&D: Marcus + the Noma fermentation book = procedurally generated menu projects */
+const RND_FERMENTS=['Miso','Koji','Black Garlic','Lacto Plum','Ryeso','Garum','Fermented Honey','Kombucha-Glazed','Noma Vinegar','Aged Shoyu'];
+const RND_FORMATS={
+  stove:[['Short Rib',13],['Risotto',11],['Duck',14],['Mother Sauce',10]],
+  garde:[['Crudo',10],['Tostada',9],['Focaccia',8],['Chicories',8]],
+  pastry:[['Donut',9],['Semifreddo',10],['Tart',9],['Soft Serve',8]],
+  window:[['Beef',8],['Hoagie',8],['Sausage',7],['Giardiniera Melt',8]],
+};
+const RND_BLURBS=[
+  'Marcus has the Noma book open to a page that is just mold, respectfully.',
+  'Seventeen deli cups in the walk-in, all labeled “TRUST ME. —M”.',
+  'Marcus taped over the label. It\'s called science now.',
+  'The hotel pan in dry storage started bubbling. Marcus says that\'s good.',
+  'Chapter 4 again. Carmy pretends not to be interested. He is.',
+];
+/* Provisions: every cooked dish consumes 1 unit of its station's stock. Buy cases on
+   supplier runs at prices that move daily; perishables spoil overnight. Run dry and the
+   dish can't fire — 86 it or watch the table walk. */
+const STOCK_LABEL={stove:'proteins', garde:'produce', pastry:'pantry', window:'beef'};
+const STOCK_BASE={stove:9, garde:6, pastry:5, window:7};   // $ per case of 6
+const SPOIL={stove:0.2, garde:0.3, pastry:0.1, window:0.15}; // nightly rot
+function rollPrices(){
+  return Object.fromEntries(Object.entries(STOCK_BASE).map(([k,v])=>
+    [k, Math.max(3, Math.round(v*(0.7+Math.random()*0.7)))]));
+}
+
+/* The Cellar: ferment & dry-age inventory. Buy raw product, wait for it to mature,
+   spend it one service at a time. Storms without a generator can spoil maturing batches. */
+const FERM_NAMES=['Lacto Plum','Beet Garum','Rhubarb Kosho','Kimchi Butter','Honey Kombucha'];
+const AGE_NAMES=['Ribeye Cap','Short Loin','Duck Crown','Pork Collar','A Frankly Enormous Bresaola'];
+const CELLAR_DEFS={
+  ferm:{icon:'🫙', label:'Ferment batch', cost:15, days:2, servings:2, names:FERM_NAMES,
+    perk:'+$1 per ticket while stocked'},
+  age:{icon:'🥩', label:'Dry-age program', cost:18, days:3, servings:2, names:AGE_NAMES,
+    perk:'hot line & window +20% speed while stocked'},
+  broth:{icon:'🍲', label:'Mother stock', cost:10, days:1, servings:2, names:['Veal Stock','Chicken Jus','Dashi, Somehow','Ten-Hour Bone Broth'],
+    perk:'hot line +15% speed while stocked'},
+};
+
+function genRndOffers(){
+  const stations=[...COOK_STATIONS].sort(()=>Math.random()-0.5).slice(0,3);
+  return stations.map((st,i)=>{
+    const [format,work]=rnd(RND_FORMATS[st]);
+    const name=rnd(RND_FERMENTS)+' '+format;
+    const val=Math.round(work*1.3+2);
+    const days=2+(Math.random()<0.35?1:0);
+    const cost=10+Math.round(val*0.9)+days*2;
+    return {id:'rnd'+(i+1), cost, days, icon:'🫙', name:'Noma Project: '+name,
+      txt:rnd(RND_BLURBS), dish:[st,name,work,val],
+      arrive:'🫙 R&D pays off — '+name.toUpperCase()+' is on the menu.'};
+  });
+}
+
+/* Components: dishes are built from SHARED components. Prep a component once in the
+   morning and every dish tonight that contains it gets faster. Some components require
+   another one first (stock → demi-glace), 'par' components cost $1 quality per plate
+   they touch. The fire step always happens live. Recipes are deterministic per dish
+   name — you learn your menu, and a new R&D dish can force you to retool your prep. */
+const COMPONENTS={
+  stock:    {name:'stock',          type:'prep', hours:1, w:0.10},
+  demi:     {name:'demi-glace',     type:'par',  hours:2, w:0.22, req:'stock'},
+  braise:   {name:'beef braise',    type:'par',  hours:2, w:0.24, req:'stock'},
+  marinade: {name:'the marinade',   type:'prep', hours:1, w:0.14},
+  sofrito:  {name:'sofrito',        type:'prep', hours:1, w:0.12},
+  herboil:  {name:'herb oil',       type:'prep', hours:1, w:0.10},
+  cure:     {name:'citrus cure',    type:'prep', hours:1, w:0.14},
+  brine:    {name:'pickle brine',   type:'prep', hours:1, w:0.10},
+  giard:    {name:'giardiniera',    type:'prep', hours:1, w:0.16, req:'brine'},
+  brioche:  {name:'brioche bake',   type:'par',  hours:1, w:0.14},
+  dough:    {name:'donut dough',    type:'prep', hours:1, w:0.16},
+  cream:    {name:'pastry cream',   type:'prep', hours:1, w:0.14},
+  crisp:    {name:'chili crisp',    type:'prep', hours:1, w:0.12},
+  garnish:  {name:'plating garnish',type:'prep', hours:1, w:0.08},
+};
+const COMP_BY_STATION={
+  stove: ['demi','braise','marinade','sofrito','herboil','crisp','garnish'],
+  garde: ['cure','herboil','brine','giard','brioche','sofrito','garnish'],
+  pastry:['dough','cream','cure','brioche','garnish'],
+  window:['braise','giard','brioche','crisp','marinade'],
+};
+const FIRE_NAMES=['sear & finish','fire to order','plate hot','fry to order'];
+const RECIPES={};
+function recipeFor(name){
+  if(RECIPES[name]) return RECIPES[name];
+  const st=COOK_STATIONS.find(s=>DISH_POOL[s].some(d=>d[0]===name))||'stove';
+  let h=0; for(let i=0;i<name.length;i++) h=(h*31+name.charCodeAt(i))>>>0;
+  const rand=()=>{ h=(h*1664525+1013904223)>>>0; return h/4294967296; };
+  const pool=[...COMP_BY_STATION[st]];
+  const k=2+(rand()<0.55?1:0);
+  const steps=[];
+  for(let i=0;i<k && pool.length;i++){
+    const cid=pool.splice(Math.floor(rand()*pool.length),1)[0];
+    const c=COMPONENTS[cid];
+    steps.push({comp:cid, name:c.name, type:c.type, w:c.w*(0.85+rand()*0.35)});
+  }
+  let sum=steps.reduce((a,s)=>a+s.w,0);
+  if(sum>0.58){ steps.forEach(s=>{ s.w*=0.58/sum; }); sum=0.58; }
+  steps.push({name:FIRE_NAMES[Math.floor(rand()*FIRE_NAMES.length)], type:'fire', w:1-sum});
+  RECIPES[name]=steps;
+  return steps;
+}
+function menuList(){ return [].concat(...COOK_STATIONS.map(sid=>DISH_POOL[sid].map(d=>d[0]))); }
+function planHours(){ return Object.keys(G.plan).reduce((a,k)=>a+(COMPONENTS[k]?COMPONENTS[k].hours:0),0); }
+function compUsage(){ // which dishes each component feeds tonight
+  const u={};
+  COOK_STATIONS.forEach(sid=>DISH_POOL[sid].forEach(d=>{
+    recipeFor(d[0]).forEach(s=>{ if(s.comp) (u[s.comp]=u[s.comp]||[]).push({station:sid, dish:d[0], w:s.w}); });
+  }));
+  return u;
+}
+
+const ALL_CREW = [
+  {id:'carmy', name:'Carmy',  emoji:'🧑‍🍳', start:true,  trait:'perfection',
+    traitTxt:'Perfectionist: +30% work speed, but stress builds 50% faster — unless he answers Claire.',
+    skills:{expo:2,stove:3,garde:2,pastry:1,window:1,foh:0,dish:1}},
+  {id:'sydney',name:'Sydney', emoji:'👩‍🍳', start:true,  trait:'natural',
+    traitTxt:'Natural: earns skill XP twice as fast.',
+    skills:{expo:3,stove:2,garde:2,pastry:1,window:0,foh:1,dish:1}},
+  {id:'tina',  name:'Tina',   emoji:'💪',   start:true,  trait:'mentor',
+    traitTxt:'Mentor: chefs sharing her station work +15% faster.',
+    skills:{expo:1,stove:2,garde:2,pastry:0,window:1,foh:0,dish:1}},
+  {id:'marcus',name:'Marcus', emoji:'🎂',   start:true,  trait:'artist',
+    traitTxt:'Artist: pastry dishes he works pay +$3.',
+    skills:{expo:0,stove:0,garde:1,pastry:3,window:0,foh:0,dish:1}},
+  {id:'richie',name:'Richie', emoji:'🕴️',  start:true,  trait:'maitred',
+    traitTxt:'Maître d’: at FRONT OF HOUSE, patience drain −30% extra.',
+    skills:{expo:1,stove:0,garde:0,pastry:0,window:1,foh:3,dish:0}},
+  {id:'ebra',  name:'Ebraheim',emoji:'🧔',  start:false, trait:'franchise',
+    traitTxt:'The Franchise: window dishes he works pay +$2. Window master.',
+    skills:{expo:0,stove:1,garde:0,pastry:0,window:3,foh:1,dish:1}},
+  {id:'fak',   name:'Neil Fak',emoji:'🔧',  start:false, trait:'handy',
+    traitTxt:'Can Fix Anything: repairs & extinguishes 2.2× faster.',
+    skills:{expo:0,stove:0,garde:0,pastry:0,window:1,foh:1,dish:2}},
+  {id:'sugar', name:'Sugar',  emoji:'🤰',   start:false, trait:'calm',
+    traitTxt:'Calming Presence: whole kitchen +10% speed while she’s on shift.',
+    skills:{expo:1,stove:0,garde:1,pastry:0,window:0,foh:2,dish:0}},
+];
+
+/* ============================== STATE ============================== */
+let G = null;   // run state
+let S = null;   // service state
+let selCrew = null;
+let lastT = 0, uiAcc = 0;
+
+function newRun(){
+  return {
+    day:1, money:35, rep:30, repMax:40, tokens:2, cellar:[],
+    stock:{stove:12, garde:12, pastry:10, window:12}, prices:rollPrices(),
+    plan:{},
+    crew: ALL_CREW.filter(c=>c.start).map(mkCrew),
+    stations: Object.fromEntries(STATION_DEFS.map(s=>[s.id,{level:1}])),
+    flags:{}, usedEvents:[], lastType:null, espresso:false, rnd:{}, rndOffers:genRndOffers(),
+  };
+}
+function mkCrew(def){
+  return {id:def.id, name:def.name, emoji:def.emoji, trait:def.trait, traitTxt:def.traitTxt,
+    skills:{...def.skills}, xp:{expo:0,stove:0,garde:0,pastry:0,window:0,foh:0,dish:0},
+    station:null, moveT:0, out:false, errand:null, stress:0, coolT:0};
+}
+
+const BLOWUPS={
+  carmy:'Carmy slams the pan down. The line goes silent.',
+  sydney:'Sydney: “BEHIND. I SAID BEHIND.”',
+  richie:'Richie: “I\'M NOT YELLING. THIS IS ME TALKING.”',
+  tina:'Tina says one word. It lands like a dropped stockpot.',
+  marcus:'Marcus unties his apron very, very quietly.',
+  ebra:'Ebraheim walks out mid-sentence. The sentence was about beef.',
+  fak:'Fak: “I\'m FINE. It\'s TED who\'s not fine!”',
+  sugar:'Sugar pinches the bridge of her nose.',
+};
+
+const BANTER_PAIR={
+  'richie|sydney':[['richie','I ran this joint when you were plating radishes, chef.'],['sydney','You called the walk-in “the big fridge” yesterday.']],
+  'carmy|sydney':[['sydney','Taste. Now.'],['carmy','…more acid.'],['sydney','I SAID more acid.']],
+  'carmy|richie':[['richie','Cousin. COUSIN.'],['carmy','Not now, Richie.']],
+  'sydney|tina':[['tina','Breathe, jefa. You got this.'],['sydney','Thank you, chef.']],
+  'carmy|marcus':[['marcus','What if the glaze… was a gel?'],['carmy','…yes.']],
+  'fak|richie':[['fak','Richie. RICHIE. Watch this.'],['richie','I will not.']],
+  'marcus|sydney':[['marcus','Taste the donut. Be honest.'],['sydney','Marcus. MARCUS.']],
+  'ebra|tina':[['ebra','The window misses you.'],['tina','The window has you, baby.']],
+};
+const BANTER_SOLO={
+  carmy:['Hands. HANDS.','Where\'s my sauce, chefs?','Clean as you go. CLEAN as you go.'],
+  sydney:['Corner. Behind. Thank you.','Two more top eights — let\'s go.','We drill it till it\'s boring, then it\'s beautiful.'],
+  richie:['I\'m wearing a suit. I AM the system.','Table nine loves me. Everybody loves me.'],
+  tina:['That\'s beautiful, baby. Again.','Watch the hands. Like THIS.'],
+  marcus:['Donut\'s almost there. Almost.','One more glaze. One more.'],
+  fak:['I fixed it! …It broke different.','Ted says hi. Nobody asked. He says hi.'],
+  ebra:['The window is a system. Respect it.','Beef. Beautiful. Next.'],
+  sugar:['Hydrate. All of you. I mean it.','The books are fine-ish. Cook.'],
+};
+function showBubble(id, text){
+  if(LAB || !FLOOR || !FLOOR.chefs[id]) return;
+  const f=FLOOR.chefs[id];
+  const b=document.createElement('div');
+  b.className='bubble'; b.textContent=text;
+  b.style.left=f.el.style.left; b.style.top=f.el.style.top;
+  document.getElementById('floor').appendChild(b);
+  setTimeout(()=>b.remove(),3400);
+}
+
+const ERRANDS={
+  supply:{icon:'🚚', name:'SUPPLIER RUN', desc:'unlocks the catalog this morning — stock, upgrades, cellar, all 20% off stock'},
+  research:{icon:'🫙', name:'R&D RUN', desc:'start a Noma project — their skill at that station shapes the odds'},
+  drill:{icon:'🔪', name:'DRILLS', desc:'a big training day at their best station'},
+  press:{icon:'📰', name:'TALK TO PRESS', desc:'+2 REP (+3 if they\'re good with people)'},
+};
+function crewById(id){ return G.crew.find(c=>c.id===id); }
+function recruited(id){ return !!crewById(id); }
+function recruit(id){
+  if(recruited(id)) return;
+  G.crew.push(mkCrew(ALL_CREW.find(c=>c.id===id)));
+}
+function rnd(a){ return a[Math.floor(Math.random()*a.length)]; }
+function clamp(v,a,b){ return Math.max(a,Math.min(b,v)); }
+function nextDay(){
+  // prep & family meal happen every day, rain or shine — a little training for everyone
+  G.crew.forEach(c=>{
+    c.errand=null; c.stress=0;
+    if(c.out){ c.out--; return; }
+    const best=Object.entries(c.skills).sort((x,y)=>y[1]-x[1])[0][0];
+    gainXp(c,best,3);
+  });
+  delete G.flags.catalog;
+  // overnight: yesterday's mise is spent, perishables rot, the market moves
+  G.plan={};
+  const lost=[];
+  Object.entries(SPOIL).forEach(([sid,rate])=>{
+    const l=Math.floor(G.stock[sid]*rate);
+    if(l>0){ G.stock[sid]-=l; lost.push(l+' '+STOCK_LABEL[sid]); }
+  });
+  if(lost.length) toast('🗑️ Overnight spoilage: '+lost.join(', ')+'.');
+  G.prices=rollPrices();
+  G.day++;
+}
+
+/* ============================== SAVE / LOAD ============================== */
+const SAVE_KEY='beartl-save';
+function save(){ try{ localStorage.setItem(SAVE_KEY, JSON.stringify(G)); }catch(e){} }
+function clearSave(){ try{ localStorage.removeItem(SAVE_KEY); }catch(e){} }
+function applyMenuExtras(){
+  if(G.flags.chaos && !DISH_POOL.stove.some(d=>d[0]==='The Chaos Dish')) DISH_POOL.stove.push(['The Chaos Dish',17,18]);
+  (G.rndOffers||[]).forEach(p=>{
+    const [st,name,work,val]=p.dish;
+    if(G.rnd && G.rnd[p.id] && G.rnd[p.id].done && !DISH_POOL[st].some(d=>d[0]===name)) DISH_POOL[st].push([name,work,val]);
+  });
+}
+function resumeRun(){
+  try{
+    G=JSON.parse(localStorage.getItem(SAVE_KEY));
+    if(!G.rnd) G.rnd={};
+    if(!G.rndOffers) G.rndOffers=genRndOffers();
+    if(!G.cellar) G.cellar=[];
+    if(!G.stock) G.stock={stove:12, garde:12, pastry:10, window:12};
+    if(!G.prices) G.prices=rollPrices();
+    if(!G.plan) G.plan={};
+    G.crew.forEach(c=>{ if(c.stress===undefined){ c.stress=0; c.coolT=0; c.errand=null; c.runT=0; c.runTicket=null; } });
+    applyMenuExtras();
+    topbar(''); gotoMap();
+  }catch(e){ clearSave(); startRun(); }
+}
+(function(){
+  try{
+    const s=localStorage.getItem(SAVE_KEY);
+    if(s){
+      document.getElementById('cont-day').textContent=JSON.parse(s).day;
+      document.getElementById('btn-continue').style.display='';
+    }
+  }catch(e){}
+})();
+
+/* ============================== SOUND ============================== */
+let AC=null, sndOn = localStorage.getItem('beartl-snd')!=='off';
+function sfx(kind){
+  if(LAB || !sndOn) return;
+  try{
+    AC = AC || new (window.AudioContext||window.webkitAudioContext)();
+    if(AC.state==='suspended') AC.resume();
+    const t=AC.currentTime;
+    const tone=(f0,f1,dur,type,vol)=>{
+      const o=AC.createOscillator(), g=AC.createGain();
+      o.type=type; o.frequency.setValueAtTime(f0,t); o.frequency.exponentialRampToValueAtTime(f1,t+dur);
+      g.gain.setValueAtTime(vol,t); g.gain.exponentialRampToValueAtTime(0.001,t+dur);
+      o.connect(g).connect(AC.destination); o.start(t); o.stop(t+dur);
+    };
+    if(kind==='bell'){ tone(880,1320,0.18,'triangle',0.16); tone(1760,1760,0.3,'sine',0.05); }
+    else if(kind==='cash'){ tone(660,990,0.09,'square',0.07); tone(990,1320,0.09,'square',0.05); }
+    else if(kind==='fire'){ tone(300,210,0.35,'sawtooth',0.11); }
+    else if(kind==='bad'){ tone(180,110,0.4,'square',0.09); }
+    else if(kind==='fix'){ tone(440,660,0.15,'sine',0.12); }
+    else if(kind==='level'){ tone(520,780,0.12,'triangle',0.13); }
+  }catch(e){}
+}
+function toggleSnd(){
+  sndOn=!sndOn;
+  try{ localStorage.setItem('beartl-snd', sndOn?'on':'off'); }catch(e){}
+  document.getElementById('ui-snd').textContent = sndOn?'🔊':'🔇';
+}
+document.getElementById('ui-snd').textContent = sndOn?'🔊':'🔇';
+
+/* ============================== SCREENS / UI CORE ============================== */
+function show(id){
+  document.querySelectorAll('.screen').forEach(s=>s.classList.remove('on'));
+  document.getElementById(id).classList.add('on');
+  document.getElementById('topbar').classList.toggle('on', id!=='title');
+}
+let LAB=false; // true while the prep lab is simulating: mute all UI side effects
+function toast(msg){
+  if(LAB) return;
+  const t=document.createElement('div'); t.className='toast'; t.textContent=msg;
+  document.getElementById('toasts').appendChild(t);
+  setTimeout(()=>t.remove(),3600);
+}
+function topbar(ctx){
+  if(LAB) return;
+  document.getElementById('ui-day').textContent=G.day;
+  document.getElementById('ui-rep').textContent=G.rep+'/'+G.repMax;
+  document.getElementById('ui-money').textContent=G.money;
+  document.getElementById('ui-tokens').textContent=G.tokens;
+  const pct=100*G.rep/G.repMax;
+  const bar=document.getElementById('ui-repbar');
+  bar.style.width=pct+'%';
+  bar.style.background = pct>60?'var(--ok)':(pct>30?'var(--accent)':'var(--danger)');
+  if(ctx!==undefined) document.getElementById('ui-context').textContent=ctx;
+}
+function repDelta(d){
+  G.rep=clamp(G.rep+d,0,G.repMax);
+  topbar();
+  if(G.rep<=0) gameOver();
+}
+function modal(title, body, choices){
+  document.getElementById('modal-h').textContent=title;
+  document.getElementById('modal-b').textContent=body;
+  const c=document.getElementById('modal-c'); c.innerHTML='';
+  choices.forEach(ch=>{
+    const b=document.createElement('button'); b.textContent=ch.label;
+    b.onclick=()=>{ document.getElementById('modal').classList.remove('on'); ch.fn&&ch.fn(); };
+    c.appendChild(b);
+  });
+  document.getElementById('modal').classList.add('on');
+}
+
+/* ============================== RUN FLOW / MAP ============================== */
+function startRun(){ G=newRun(); topbar(''); gotoMap(); }
+
+function gotoMap(){
+  if(G.rep<=0) return;
+  // R&D projects come out of the walk-in when they're ready — it's research, results vary
+  G.rndOffers.forEach(p=>{
+    const r=G.rnd[p.id];
+    if(r && !r.done && G.day>=r.due){
+      r.done=true;
+      const roll=Math.random();
+      const skilled=(r.skill||1)>=2; // a chef who knows the station gets better odds
+      if(roll<(skilled?0.12:0.25)){ // went sideways
+        r.failed=true;
+        if(G.cellar.length<3){
+          G.cellar.push({type:'ferm', name:'Accidental '+rnd(FERM_NAMES), ready:G.day, left:1});
+          sfx('bad'); toast('🦠 The '+p.dish[1]+' went sideways. It is, however, an excellent ferment — it\'s in the cellar.');
+        } else {
+          repDelta(1);
+          sfx('bad'); toast('🦠 The '+p.dish[1]+' went sideways. The staff-meal story alone is worth +1 REP.');
+        }
+      } else {
+        const star = roll>=(skilled?0.62:0.7); // breakthrough
+        if(star){ p.dish[1]+=' ★'; p.dish[3]=Math.round(p.dish[3]*1.5); repDelta(1); }
+        const [st,name,work,val]=p.dish;
+        if(!DISH_POOL[st].some(d=>d[0]===name)) DISH_POOL[st].push([name,work,val]);
+        sfx('level');
+        toast(star ? '🌟 BREAKTHROUGH — '+name+' is transcendent. On the menu, +1 REP.' : p.arrive);
+      }
+    }
+  });
+  save();
+  show('map'); topbar('planning the day');
+  document.getElementById('map-day').textContent=G.day;
+  const dots=document.getElementById('map-dots');
+  dots.innerHTML='';
+  for(let i=1;i<=12;i++){
+    const d=document.createElement('div');
+    d.className='pdot'+(i<G.day?' done':'')+(i===12?' final':'');
+    d.title = i===12?'MICHELIN NIGHT':'Day '+i;
+    dots.appendChild(d);
+  }
+  renderCrewSheet();
+  renderDayPlan();
+  maybeEvent();
+}
+
+function maybeEvent(){
+  if(G.day<=1 || G.day>=12 || G.flags['evt'+G.day]) return;
+  G.flags['evt'+G.day]=true;
+  if(Math.random()<0.45) runEvent();
+}
+
+function prepCap(){ return 2*G.crew.filter(c=>!c.out && !c.errand).length; }
+function planToggle(cid){
+  const c=COMPONENTS[cid]; if(!c) return;
+  if(G.plan[cid]){
+    delete G.plan[cid];
+    // a prereq coming off the board takes its dependents with it
+    Object.keys(COMPONENTS).forEach(k=>{ if(COMPONENTS[k].req===cid) delete G.plan[k]; });
+  } else {
+    const need=(c.req && !G.plan[c.req])?[c.req,cid]:[cid];
+    const cost=need.reduce((a,k)=>a+COMPONENTS[k].hours,0);
+    if(planHours()+cost>prepCap()) return;
+    need.forEach(k=>{ G.plan[k]=true; });
+  }
+  renderDayPlan(); save();
+}
+
+function renderDayPlan(){
+  const el=document.getElementById('doors'); el.innerHTML='';
+  const busy=G.crew.filter(c=>c.errand).length;
+  const wrap=document.createElement('div');
+  wrap.className='panel'; wrap.style.maxWidth='680px'; wrap.style.margin='0 auto'; wrap.style.width='100%';
+  let h='';
+  const cap=prepCap(), used=planHours();
+  const lean = G.day<4 ? 'the window — sandwich-heavy book' : (G.day<8 ? 'a mixed book' : 'the dining room — fine-dining heavy');
+  h+=`<p class="muted" style="font-size:.85rem; margin-bottom:6px;">🔪 PREP BOARD — hours <b class="gold">${used}/${cap}</b> <span style="font-size:.76rem;">(2 per chef in the building — errands cost you hands)</span><br>
+  <span style="font-size:.76rem;">Prep a component once and <b>every dish that uses it</b> gets faster tonight. ⛓ chains need their base. <span class="gold">Par</span> costs $1 quality per plate. <b>Hover a component to see the dishes it feeds.</b> Tonight leans <b class="gold">${lean}</b>.</span></p>`;
+  // the morning timeline — selected components laid end to end against capacity
+  const order=Object.keys(COMPONENTS).sort((a,b)=>(COMPONENTS[a].req?1:0)-(COMPONENTS[b].req?1:0));
+  const sel=order.filter(k=>G.plan[k]);
+  h+='<div style="display:flex; height:16px; border:1px solid var(--line); border-radius:3px; overflow:hidden; margin-bottom:8px; background:#0a0e14;">';
+  sel.forEach((k,i)=>{
+    const c=COMPONENTS[k];
+    h+=`<div title="${c.name}" style="width:${100*c.hours/Math.max(cap,1)}%; background:${c.type==='par'?'#c8a030':'var(--ok)'}; border-right:1px solid #0008;
+      font-size:.58rem; color:#08110a; overflow:hidden; white-space:nowrap; padding:1px 3px;">${c.name}</div>`;
+  });
+  h+='</div>';
+  const usage=compUsage();
+  h+='<div style="display:flex; flex-wrap:wrap; gap:7px; margin-top:2px;">';
+  order.forEach(cid=>{
+    const c=COMPONENTS[cid];
+    const feeds=usage[cid]||[];
+    if(!feeds.length) return;
+    const on=!!G.plan[cid];
+    const lev=Math.round(100*feeds.reduce((a,f)=>a+f.w,0));
+    const cost=on?0:((c.req&&!G.plan[c.req])?c.hours+COMPONENTS[c.req].hours:c.hours);
+    h+=`<button data-comp="${cid}" onclick="planToggle('${cid}')" ${!on&&used+cost>cap?'disabled':''}
+      style="font-size:.82rem; padding:4px 11px; border-radius:10px;${on?' border-color:var(--ok); color:var(--ok);':''}">${on?'✓ ':''}${c.name}
+      <span class="muted" style="font-size:.72rem;">${c.hours}h</span> <span class="green" style="font-size:.72rem;">−${lev}%</span>${c.type==='par'?' <span style="color:#c8a030; font-size:.72rem;">par</span>':''}${c.req?' <span class="muted">⛓</span>':''}</button>`;
+  });
+  h+='</div>';
+  // tonight's menu impact
+  const impacted=menuList().map(name=>{
+    const saved=Math.round(100*recipeFor(name).reduce((a,s)=>a+((s.comp&&G.plan[s.comp])?s.w:0),0));
+    return saved>0?name+' <span class="green">−'+saved+'%</span>':null;
+  }).filter(Boolean);
+  if(impacted.length) h+=`<p style="font-size:.68rem; margin-top:6px;" class="muted">TONIGHT: ${impacted.join(' · ')}</p>`;
+  h+=`<div style="text-align:right; margin-top:4px;"><button onclick="openLab()" style="font-size:.7rem;" title="formalize the prep problem and solve it">📊 PREP LAB — learn stochastic optimization</button></div>`;
+  if(G.day===12){
+    h+='<p class="red" style="text-align:center; font-size:.85rem; margin-top:8px;">⭐ MICHELIN NIGHT — all hands on deck. No errands. Stock the walk-in DEEP and prep everything.</p>';
+  } else {
+    h+=`<p class="muted" style="font-size:.8rem; margin-bottom:6px;">MORNING ERRANDS — send up to 2 chefs (${busy}/2 out). They'll miss tonight's service.</p>`;
+    Object.entries(ERRANDS).forEach(([id,e])=>{
+      const who=G.crew.filter(c=>c.errand===id).map(c=>c.emoji+' '+c.name).join(', ');
+      h+=`<div class="row"><span>${e.icon} <b>${e.name}</b> <span class="muted" style="font-size:.73rem;">${e.desc}</span></span>
+        ${who?`<span class="gold" style="font-size:.8rem; white-space:nowrap;">${who}</span>`:`<button onclick="assignErrand('${id}')" ${busy>=2?'disabled':''}>send…</button>`}</div>`;
+    });
+    if(G.flags.catalog) h+=`<div class="center" style="margin-top:10px;"><button onclick="openShop()">🚚 OPEN THE SUPPLIER CATALOG</button></div>`;
+  }
+  wrap.innerHTML=h;
+  el.appendChild(wrap);
+  const btn=document.createElement('button');
+  btn.className='big';
+  btn.style.margin='16px auto 0'; btn.style.display='block';
+  btn.textContent = G.day===12 ? '⭐ MICHELIN NIGHT — YES, CHEF' : '🔔 OPEN FOR SERVICE — DAY '+G.day;
+  btn.onclick=()=>startService(G.day===12);
+  el.appendChild(btn);
+}
+
+function assignErrand(type){
+  if(G.crew.filter(c=>c.errand).length>=2) return;
+  const free=G.crew.filter(c=>!c.errand && !c.out);
+  if(!free.length) return;
+  modal(ERRANDS[type].icon+' '+ERRANDS[type].name, 'Who goes? They\'ll miss tonight\'s service.',
+    free.map(c=>({label:c.emoji+' '+c.name+' — '+c.traitTxt, fn:()=>doErrand(type,c)}))
+      .concat([{label:'Nobody. Keep the line whole.', fn:null}]));
+}
+function doErrand(type,c){
+  if(type==='research'){
+    const open=G.rndOffers.filter(p=>!G.rnd[p.id]);
+    if(!open.length){ toast('Nothing left to chase — the book is fully annotated.'); renderDayPlan(); return; }
+    modal('🫙 PICK THE PROJECT','What does '+c.name+' chase? Skill at the station shapes the odds.',
+      open.map(p=>{
+        const sd=STATION_DEFS.find(s=>s.id===p.dish[0]);
+        const sk=c.skills[p.dish[0]];
+        return {label:`${p.name} — $${p.cost} · ${p.days} days (${sd.icon} their skill: ${'●'.repeat(sk)||'○'})`,
+          fn:()=>{ if(G.money<p.cost){ toast('Not enough cash.'); renderDayPlan(); return; } c.errand=type; buyRnd(p.id, c); gotoMap(); }};
+      }).concat([{label:'Never mind.', fn:()=>renderDayPlan()}]));
+    return;
+  }
+  c.errand=type;
+  if(type==='supply'){ G.flags.catalog=true; toast('🚚 '+c.name+' takes the van. Catalog\'s open — 20% off stock today.'); }
+  else if(type==='drill'){ const best=Object.entries(c.skills).sort((x,y)=>y[1]-x[1])[0][0]; gainXp(c,best,15); toast('🔪 '+c.name+' drills '+stName(best)+' until it\'s muscle memory.'); }
+  else if(type==='press'){ const b=(c.trait==='maitred'||c.trait==='calm')?3:2; repDelta(b); toast('📰 '+c.name+' charms a food writer. +'+b+' REP.'); }
+  gotoMap();
+}
+
+function renderCrewSheet(){
+  const el=document.getElementById('crew-sheet');
+  let h='<h2 style="font-size:1rem;">THE BRIGADE</h2>';
+  G.crew.forEach(c=>{
+    const best=Object.entries(c.skills).sort((a,b)=>b[1]-a[1])[0];
+    const sd=STATION_DEFS.find(s=>s.id===best[0]);
+    h+=`<div class="row"><span>${c.emoji} <b>${c.name}</b>${c.out?' <span class="red">(out today)</span>':''}${c.errand?' <span class="gold">('+ERRANDS[c.errand].icon+' on a run)</span>':''}</span>
+        <span class="muted" style="font-size:.78rem; max-width:52%;">${c.traitTxt}</span>
+        <span class="dots" title="best: ${sd.name}">${sd.icon} ${'●'.repeat(best[1])}${'○'.repeat(3-best[1])}</span></div>`;
+  });
+  h+=`<div class="row"><span>📦 <b>WALK-IN</b> <span class="muted" style="font-size:.72rem;">(morning rush delivery: +$2/case over market)</span></span>
+    <span style="font-size:.78rem; display:flex; gap:10px; flex-wrap:wrap;">${
+    COOK_STATIONS.map(sid=>{
+      const n=G.stock[sid], p=G.prices[sid]+2;
+      return `<span class="${n<=3?'red':'muted'}">${STATION_DEFS.find(s=>s.id===sid).icon} ${STOCK_LABEL[sid]} <b>${n}</b>
+        <button onclick="morningBuy('${sid}')" ${G.money<p?'disabled':''} style="font-size:.7rem; padding:1px 6px;">+6 $${p}</button></span>`;
+    }).join('')
+  }</span></div>`;
+  if(G.cellar.length){
+    h+=`<div class="row"><span>🧊 <b>CELLAR</b></span><span class="muted" style="font-size:.78rem;">${
+      G.cellar.map(b=>CELLAR_DEFS[b.type].icon+' '+b.name+(G.day>=b.ready?' — READY ('+b.left+' left)':' — day '+b.ready)).join(' · ')
+    }</span></div>`;
+  }
+  el.innerHTML=h;
+}
+
+
+/* ============================== EVENTS ============================== */
+const EVENTS = [
+ {id:'haunt', title:'THE WALK-IN IS HAUNTED', when:()=>!recruited('fak'),
+  body:'Neil Fak swears the walk-in whispered his name. Ted backs him up, which helps nobody. Neil offers to “stake it out overnight — free, well, almost free.”',
+  choices:[
+   {label:'Pay him $10. Worst handyman audition ever. (recruit Neil Fak)', fn:()=>{ if(G.money>=10){G.money-=10; recruit('fak'); toast('🔧 Neil Fak joins the brigade!');} else toast('Not enough cash — Neil shrugs and leaves.'); }},
+   {label:'It\'s the compressor, Neil. Go home.', fn:()=>toast('The compressor agrees, ominously.')}]},
+ {id:'lockin', title:'LOCKED IN THE WALK-IN', when:()=>true,
+  body:'The walk-in handle finally snaps off — with Carmy inside, mid-inventory, again. You can hear muffled, extremely specific swearing.',
+  choices:[
+   {label:'Emergency repair guy, $25, twenty minutes.', fn:()=>{ G.money=Math.max(0,G.money-25); toast('Door fixed. Carmy emerges, colder and wiser.'); }},
+   {label:'Crowbar it. Loudly. During lunch.', fn:()=>{ repDelta(-2); toast('-2 REP. The dining room heard words no diner should hear.'); }}]},
+ {id:'cicero', title:'CICERO WANTS NUMBERS', when:()=>true,
+  body:'Uncle Jimmy slides into a booth with The Computer. “I love you kids. I also love not being poor. Show me something or I start making calls.”',
+  choices:[
+   {label:'Buy him out of panicking. (-$30)', fn:()=>{ if(G.money>=30){G.money-=30; toast('Jimmy pockets it: “This means nothing. But thank you.”');} else { repDelta(-3); toast('You can\'t pay. -3 REP as word gets around.'); } }},
+   {label:'Promise him the star. (-3 REP if you\'re bluffing — you\'re bluffing)', fn:()=>{ repDelta(-3); toast('-3 REP. Jimmy: “You said that last year. VERBATIM.”'); }}]},
+ {id:'claire', title:'A MISSED CALL', when:()=>!G.flags.claire,
+  body:'Carmy\'s phone buzzes on the pass. Claire. He looks at it a beat too long.',
+  choices:[
+   {label:'“Take five, chef.” (Carmy\'s stress stops building faster, permanently)', fn:()=>{ G.flags.claire=true; toast('🧑‍🍳 He steps out for two minutes. Comes back quieter.'); }},
+   {label:'He pockets it.', fn:()=>toast('Sydney clocks it. Says nothing.')}]},
+ {id:'ebra', title:'EBRA\'S PITCH', when:()=>!recruited('ebra'),
+  body:'Ebraheim has a laminated one-pager: THE BEEF — FRANCHISE OPPORTUNITIES. “The window prints money. I know the window. Invest in the window.”',
+  choices:[
+   {label:'Invest $20. (recruit Ebraheim, window master)', fn:()=>{ if(G.money>=20){G.money-=20; recruit('ebra'); toast('🧔 Ebraheim runs the window now. It shows.');} else toast('No cash. Ebra nods: “The offer stands.”'); }},
+   {label:'Not now, Ebra.', fn:()=>toast('He files the laminate away with dignity.')}]},
+ {id:'sugar', title:'SUGAR CHECKS IN', when:()=>!recruited('sugar'),
+  body:'Natalie shows up with spreadsheets, a diaper bag, and the unmistakable look of someone who already fixed two of your problems in the parking lot.',
+  choices:[
+   {label:'“We need you.” (recruit Sugar — kitchen +10% while she\'s in)', fn:()=>{ recruit('sugar'); toast('🤰 Sugar\'s on shift. Everything is 10% calmer.'); }},
+   {label:'“We\'re good. Go rest.” (+2 REP, she quietly does PR anyway)', fn:()=>{ repDelta(2); toast('+2 REP. She “rested” by calling three food writers.'); }}]},
+ {id:'inspect', title:'HEALTH INSPECTOR, UNANNOUNCED', when:()=>true,
+  body:'Clipboard. Flashlight. That walk. He\'s heading for the dish pit first, because of course he is.',
+  choices:[
+   {label:'Full walkthrough, nothing to hide. (50/50: +3 REP or -$20 fine)', fn:()=>{ if(Math.random()<0.5){repDelta(3); toast('+3 REP. “Cleanest pit on this block.”');} else {G.money=Math.max(0,G.money-20); toast('-$20. A single, fatal, mislabeled deli cup.');} }},
+   {label:'Espresso, biscotti, charm offensive. (-$10, guaranteed pass)', fn:()=>{ G.money=Math.max(0,G.money-10); toast('He passes you. He also takes a cannoli “for evidence.”'); }}]},
+ {id:'blogger', title:'THE REVIEWER IS IN', when:()=>true,
+  body:'Table 4 photographed the focaccia from six angles and is typing with intent. That\'s either 400k followers or a very hungry accountant.',
+  choices:[
+   {label:'Comp the table, send the good stuff. (-$15, +4 REP)', fn:()=>{ if(G.money>=15){G.money-=15; repDelta(4); toast('+4 REP. The post says “transcendent.” Twice.');} else toast('Can\'t afford it. The post says “solid.” Once.'); }},
+   {label:'Everyone gets the same Bear. (+1 REP)', fn:()=>{ repDelta(1); toast('+1 REP. Respect for the integrity, mostly.'); }}]},
+ {id:'storm', title:'STORM WARNING', when:()=>!G.flags.generator,
+  body:'The radar is one enormous red blob parked over Lake Michigan. The lights already did the flicker. The walk-in did the noise.',
+  choices:[
+   {label:'Rent a generator. (-$20, storms can\'t hurt your equipment odds)', fn:()=>{ if(G.money>=20){G.money-=20; G.flags.generator=true; toast('⚡ Generator hums behind the restaurant.');} else toast('No cash. The lights flicker, judgmentally.'); }},
+   {label:'Risk it. (next service: more breakdowns & fires)', fn:()=>{ G.flags.stormNext=true; toast('You feel lucky. The lake does not care.'); }}]},
+ {id:'chaos', title:'CHAOS MENU', when:()=>!G.flags.chaos,
+  body:'Carmy, at 2 AM, invented a dish with 14 components and a smoked element. It is objectively brilliant. It is objectively insane to run.',
+  choices:[
+   {label:'Run it. (adds “The Chaos Dish”: slow to cook, pays $18)', fn:()=>{ G.flags.chaos=true; DISH_POOL.stove.push(['The Chaos Dish',17,18]); toast('🌪️ The Chaos Dish is on the menu.'); }},
+   {label:'Keep the menu tight. (+1 REP)', fn:()=>{ repDelta(1); toast('+1 REP. Restraint is a skill.'); }}]},
+ {id:'court', title:'RICHIE HAS COURT', when:()=>!crewById('richie').out,
+  body:'Richie, adjusting a tie that fits suspiciously well: “It\'s a MISUNDERSTANDING about a MUNICIPAL parking structure. I need tomorrow. Or I need a very good lawyer today.”',
+  choices:[
+   {label:'Pay the lawyer. (-$15, Richie stays on the floor)', fn:()=>{ if(G.money>=15){G.money-=15; toast('Case dismissed. Richie frames the paperwork.');} else { crewById('richie').out=2; toast('Can\'t afford it. Richie\'s out tomorrow — “I\'ll be BACK.”'); } }},
+   {label:'“Take the day, Cousin.” (Richie is out tomorrow)', fn:()=>{ crewById('richie').out=2; toast('🕴️ Richie\'s out tomorrow. The floor will feel it.'); }}]},
+ {id:'burn', title:'HANDS! ...HANDS?', when:()=>G.crew.length>=5,
+  body:'A pan handle nobody called HOT. A yelp. A very brave “I\'m fine” from someone visibly not fine, now holding their hand in the ice bin.',
+  choices:[
+   {label:'Urgent care, now. (-$12, they\'re back on the line)', fn:()=>{ G.money=Math.max(0,G.money-12); toast('Wrapped, cleared, back on station. “Told you I\'m fine.”'); }},
+   {label:'“Go home. That\'s an order.” (a random chef sits out tomorrow, +1 REP for doing it right)', fn:()=>{ const c=rnd(G.crew.filter(x=>!x.out)); c.out=2; repDelta(1); toast('🤕 '+c.name+' sits out tomorrow. The kitchen respects it.'); }}]},
+ {id:'pep', title:'EVERY SECOND COUNTS', when:()=>true,
+  body:'Before the rush, Sydney gathers everyone at the pass. No speech, really. Just: “We know how to do this. Hands. Eyes. Corner. Behind. Let\'s go.”',
+  choices:[
+   {label:'“YES, CHEF.” (next service: whole kitchen +15% speed)', fn:()=>{ G.flags.pep=true; toast('🔥 The line is locked in.'); }}]},
+ {id:'shift', title:'A GIFT FROM THE OLD CREW', when:()=>true,
+  body:'A cooler shows up from Kalinowski\'s old crew at the beef stand: brisket trim, giardiniera, a note that just says “DON\'T SCREW IT UP.”',
+  choices:[
+   {label:'Prep it all. (+$15 worth of covers tonight)', fn:()=>{ G.money+=15; toast('+$15. The window smells incredible.'); }},
+   {label:'Staff meal. Morale is an ingredient. (+2 REP)', fn:()=>{ repDelta(2); toast('+2 REP. Richie cries a little. “Allergies.”'); }}]},
+];
+function runEvent(){
+  const avail=EVENTS.filter(e=>!G.usedEvents.includes(e.id) && e.when());
+  if(!avail.length) return;
+  const ev=rnd(avail);
+  G.usedEvents.push(ev.id);
+  modal(ev.title, ev.body, ev.choices.map(c=>({label:c.label, fn:()=>{ c.fn(); topbar(); if(G.rep>0){ save(); renderDayPlan(); renderCrewSheet(); } }})));
+}
+
+/* ============================== SHOP ============================== */
+function openShop(){
+  show('shop'); topbar('supplier run');
+  const el=document.getElementById('shop-items');
+  let h='';
+  h+=`<div class="row"><span><b>📦 PROVISIONS</b> <span class="muted" style="font-size:.75rem;">every dish fired burns 1 unit · perishables rot overnight · prices move daily</span></span></div>`;
+  COOK_STATIONS.forEach(sid=>{
+    const def=STATION_DEFS.find(s=>s.id===sid);
+    const p=Math.max(2,Math.round(G.prices[sid]*0.8)), base=STOCK_BASE[sid];
+    const mkt = p<base?'<span class="green">▼</span>':(p>base?'<span class="red">▲</span>':'');
+    h+=`<div class="row"><span>${def.icon} ${STOCK_LABEL[sid]} — <b>${G.stock[sid]}</b> on hand</span>
+      <button onclick="buyCase('${sid}')" ${G.money<p?'disabled':''}>+6 units — $${p} ${mkt}</button></div>`;
+  });
+  COOK_STATIONS.concat(['expo','dish']).forEach(sid=>{
+    const st=G.stations[sid], def=STATION_DEFS.find(s=>s.id===sid);
+    const cost=15+15*st.level;
+    h+=`<div class="row"><span>${def.icon} ${def.name} <span class="gold">Lv${st.level}</span></span>
+      ${st.level>=3?'<span class="muted">MAXED</span>':`<button onclick="buyUpgrade('${sid}',${cost})" ${G.money<cost?'disabled':''}>+30% speed — $${cost}</button>`}</div>`;
+  });
+  h+=`<div class="row"><span>📰 Good press (+5 REP)</span><button onclick="buyRep()" ${G.money<18?'disabled':''}>$18</button></div>`;
+  h+=`<div class="row"><span>🚫 86-token (strike a dish off the menu mid-service)</span><button onclick="buyToken()" ${G.money<8?'disabled':''}>$8</button></div>`;
+  if(!G.espresso) h+=`<div class="row"><span>☕ Espresso machine (+10% kitchen speed, forever)</span><button onclick="buyEspresso()" ${G.money<30?'disabled':''}>$30</button></div>`;
+  h+=`<div class="row"><span><b>🧊 THE CELLAR</b> <span class="muted" style="font-size:.75rem;">(${G.cellar.length}/3 slots · storms without a generator can spoil maturing batches)</span></span></div>`;
+  G.cellar.forEach(b=>{
+    const def=CELLAR_DEFS[b.type];
+    h+=`<div class="row"><span>${def.icon} ${b.name}</span><span class="${G.day>=b.ready?'green':'muted'}" style="font-size:.8rem;">${G.day>=b.ready?'READY — '+b.left+' service'+(b.left>1?'s':'')+' left':'maturing — ready day '+b.ready}</span></div>`;
+  });
+  if(G.cellar.length<3){
+    Object.entries(CELLAR_DEFS).forEach(([type,def])=>{
+      h+=`<div class="row"><span>${def.icon} ${def.label} <span class="muted" style="font-size:.75rem;">${def.days} days to mature · ${def.servings} services of ${def.perk}</span></span>
+        <button onclick="buyBatch('${type}')" ${G.money<def.cost?'disabled':''}>$${def.cost}</button></div>`;
+    });
+  }
+  G.rndOffers.forEach(p=>{
+    const r=G.rnd[p.id];
+    if(r && !r.done) h+=`<div class="row"><span>${p.icon} R&D: ${p.name}</span><span class="muted">in development — ready day ${r.due}</span></div>`;
+  });
+  [['ebra',35,'Ebraheim — window master'],['fak',25,'Neil Fak — fixes anything'],['sugar',30,'Sugar — calms the kitchen']].forEach(([id,cost,txt])=>{
+    if(!recruited(id)) h+=`<div class="row"><span>🤝 ${txt}</span><button onclick="buyCrew('${id}',${cost})" ${G.money<cost?'disabled':''}>$${cost}</button></div>`;
+  });
+  el.innerHTML=h;
+}
+function buyUpgrade(sid,cost){ if(G.money>=cost && G.stations[sid].level<3){ G.money-=cost; G.stations[sid].level++; topbar(); openShop(); } }
+function buyRep(){ if(G.money>=18){ G.money-=18; repDelta(5); openShop(); } }
+function buyToken(){ if(G.money>=8){ G.money-=8; G.tokens++; topbar(); openShop(); } }
+function buyEspresso(){ if(G.money>=30){ G.money-=30; G.espresso=true; topbar(); openShop(); toast('☕ The machine gleams. Productivity soars.'); } }
+function morningBuy(sid){
+  const p=G.prices[sid]+2;
+  if(G.money<p) return;
+  G.money-=p; G.stock[sid]+=6;
+  topbar(); renderCrewSheet(); save();
+}
+function buyCase(sid){
+  const p=Math.max(2,Math.round(G.prices[sid]*0.8));
+  if(G.money<p) return;
+  G.money-=p; G.stock[sid]+=6;
+  topbar(); openShop();
+}
+function buyBatch(type){
+  const def=CELLAR_DEFS[type];
+  if(G.money<def.cost || G.cellar.length>=3) return;
+  G.money-=def.cost;
+  const name=rnd(def.names);
+  G.cellar.push({type, name, ready:G.day+def.days, left:def.servings});
+  topbar(); openShop();
+  toast(def.icon+' '+name+' goes into the cellar. Ready day '+(G.day+def.days)+'.');
+}
+function buyRnd(id, chef){
+  const p=G.rndOffers.find(p=>p.id===id);
+  if(G.money>=p.cost && !G.rnd[id]){
+    G.money-=p.cost;
+    G.rnd[id]={due:G.day+p.days, done:false, skill:chef?chef.skills[p.dish[0]]:1};
+    topbar();
+    toast(p.icon+' '+(chef?chef.name+' chases ':'')+p.name+'. Ready day '+(G.day+p.days)+'.');
+  }
+}
+function buyCrew(id,cost){ if(G.money>=cost && !recruited(id)){ G.money-=cost; recruit(id); topbar(); openShop(); toast('🤝 '+crewById(id).name+' joins the brigade!'); } }
+function leaveShop(){ gotoMap(); }
+
+/* ============================== SERVICE ============================== */
+function startService(michelin){
+  const day=G.day;
+  const storm = michelin || !!G.flags.stormNext;
+  S = {
+    michelin, storm, over:false, paused:false,
+    toSpawn: michelin?16:(7+Math.ceil(day*0.6)),
+    spawned:0, spawnT:2.5,
+    spawnInt: Math.max(2.8, (michelin?3.4:5.6-day*0.24)),
+    workScale: 1.7+day*0.055,
+    patScale: (michelin?0.9:1) * (1 - day*0.012),
+    hazT: 14+Math.random()*8, nextTid:1, banterT:6,
+    tickets:[], banned:[], dirty:0, dirtyCap:12,
+    completed:0, failed:0, earned:0,
+    fireRepAcc:0, time:0,
+    speedBuff: G.flags.pep?1.15:1,
+  };
+  if(storm && !G.flags.generator) S.hazMult=0.55; else S.hazMult = storm?0.8:1;
+  // storm + no generator: the walk-in flickers, maturing batches are at risk
+  if(storm && !G.flags.generator){
+    G.cellar=G.cellar.filter(b=>{
+      if(G.day<b.ready && Math.random()<0.35){ toast('🦠 The '+b.name+' spoiled in the flickering walk-in.'); return false; }
+      return true;
+    });
+  }
+  // pull tonight's stock from the cellar
+  const takeStock=type=>{
+    const b=G.cellar.find(b=>b.type===type && G.day>=b.ready && b.left>0);
+    if(!b) return null;
+    b.left--;
+    if(b.left<=0) G.cellar=G.cellar.filter(x=>x!==b);
+    return b;
+  };
+  const aged=takeStock('age'), ferm=takeStock('ferm'), broth=takeStock('broth');
+  S.buffAge=!!aged; S.buffFerm=!!ferm; S.buffBroth=!!broth;
+  if(aged) toast('🥩 The '+aged.name+' comes out of the cellar. Hot line and window are flying.');
+  if(ferm) toast('🫙 '+ferm.name+' on every plate. Diners are paying for the funk.');
+  if(broth) toast('🍲 '+broth.name+' simmering on the back burner. The hot line hums.');
+  delete G.flags.stormNext; delete G.flags.pep;
+  G.crew.forEach(c=>{ c.station=null; c.moveT=0; c.coolT=0; c.runT=0; c.runTicket=null; c.stress=S.speedBuff>1?0:2; });
+  // sensible default assignments — every cook station needs a body, so Richie
+  // covers the window until Ebraheim is recruited
+  const order={carmy:'stove',sydney:'expo',tina:'garde',marcus:'pastry',
+    richie:recruited('ebra')?'foh':'window',ebra:'window',fak:'dish',sugar:'foh'};
+  G.crew.forEach(c=>{ if(!c.out && !c.errand) c.station=order[c.id]||'dish'; });
+  selCrew=null;
+  if(LAB) return;
+  show('service');
+  topbar(michelin?'⭐ MICHELIN NIGHT — THE STORM IS HERE':'service in progress');
+  document.getElementById('svc-banner').textContent =
+    michelin ? '⛈️ MICHELIN NIGHT — full book, storm overhead, no mistakes. NON-NEGOTIABLE.'
+    : (storm ? '⛈️ Storm service — equipment is going to fight you tonight.' : '🔔 Service — Day '+day+' · clear all tickets, protect the REP.');
+  renderService(true);
+  sfx('bell');
+  toast(michelin?'⭐ “Every second counts. Let\'s go.”':'🔔 “Hands! Corner! Behind!” — service begins');
+}
+
+function mkTicket(){
+  const day=G.day;
+  const r=Math.random();
+  let n = r<Math.max(0.1,0.35-day*0.03)?1 : (r<0.8?2:3);
+  if(S.michelin && Math.random()<0.4) n=3;
+  const dishes=[];
+  for(let i=0;i<n;i++){
+    // early days lean on the window, later lean fine-dining
+    const w = Math.random();
+    let st;
+    if(w < Math.max(0.15, 0.45-day*0.03)) st='window';
+    else st = rnd(['stove','stove','garde','pastry']);
+    const pool=DISH_POOL[st].filter(d=>!S.banned.includes(d[0]));
+    const [name,work,val]=rnd(pool.length?pool:DISH_POOL[st]);
+    // apply tonight's mise en place: prepped components vanish from service, par dings quality
+    const rec=recipeFor(name);
+    let frac=0, parQ=0;
+    rec.forEach(s=>{ if(s.comp && G.plan[s.comp]){ frac+=s.w; if(s.type==='par') parQ++; } });
+    dishes.push({station:st, name, work:work*S.workScale*(1-frac), prog:0, val:Math.max(2,val-parQ), workers:[]});
+  }
+  const pat=Math.max(14,(17+n*6)*S.patScale);
+  return {id:S.nextTid++, dishes, pat, patMax:pat, plateNeed:2+n, plateProg:0, table:rnd(['Table 2','Table 4','Table 7','Table 9','Bar 1','Bar 3','Chef\'s Counter','Booth 6'])};
+}
+
+function dishDone(d){ return d.x86 || d.prog>=d.work; }
+function ticketDone(t){
+  let val = Math.ceil((t.dishes.reduce((a,d)=>a+(d.x86?0:d.val),0)+2)/4);
+  if(S.buffFerm) val+=1;
+  t.dishes.forEach(d=>{
+    if(d.x86) return;
+    if(d.station==='pastry' && d.workers.includes('marcus')) val+=3;
+    if(d.station==='window' && d.workers.includes('ebra')) val+=2;
+  });
+  G.money+=val; S.earned+=val; S.completed++;
+  S.dirty=Math.min(S.dirtyCap+8, S.dirty+2);
+  sfx('cash');
+  topbar();
+}
+
+function crewRate(c, sid){
+  let r = 2.2*(1+0.35*c.skills[sid])*(1+0.3*(G.stations[sid].level-1));
+  r *= 1+0.4*(G.stations[sid].flow||0);
+  if(S.buffAge && (sid==='stove'||sid==='window')) r*=1.2;
+  if(S.buffBroth && sid==='stove') r*=1.15;
+  if(c.trait==='perfection') r*=1.3;
+  const mates=G.crew.filter(o=>o!==c && o.station===c.station && o.moveT<=0);
+  if(mates.some(o=>o.trait==='mentor')) r*=1.15;
+  if(G.crew.some(o=>o.trait==='calm' && o.station && o.moveT<=0)) r*=1.1;
+  if(G.espresso) r*=1.1;
+  r*=S.speedBuff;
+  if(S.dirty>=S.dirtyCap) r*=0.6;
+  return r;
+}
+function gainXp(c, sid, amt){
+  if(c.trait==='natural') amt*=2;
+  if(c.skills[sid]>=3) return;
+  c.xp[sid]+=amt;
+  if(c.xp[sid]>=30){
+    c.xp[sid]=0; c.skills[sid]++;
+    sfx('level');
+    toast(`📈 ${c.name} is now ${'●'.repeat(c.skills[sid])} at ${STATION_DEFS.find(s=>s.id===sid).name}!`);
+  }
+}
+
+function spawnHazard(){
+  const roll=Math.random();
+  const targets=COOK_STATIONS.concat(['expo']).filter(sid=>!G.stations[sid].fire && !G.stations[sid].broken);
+  if(roll<0.2 && targets.length){
+    const sid=rnd(targets); const st=G.stations[sid];
+    st.fire=10; st.fireT=0;
+    sfx('fire');
+    toast('🔥 FIRE at '+STATION_DEFS.find(s=>s.id===sid).name+'! Get bodies on it!');
+  } else if(roll<0.32 && targets.length){
+    const sid=rnd(targets); const st=G.stations[sid];
+    st.broken=12;
+    sfx('bad');
+    toast('🔩 '+STATION_DEFS.find(s=>s.id===sid).name+' just DIED. Needs repair.');
+  } else {
+    for(let i=0;i<2;i++){ S.tickets.push(mkTicket()); S.toSpawn++; S.spawned++; }
+    sfx('bell');
+    toast('🚪 RUSH — a party just walked in. Two extra tickets!');
+  }
+}
+
+function update(dt){
+  if(!S || S.over || S.paused) return;
+  S.time+=dt;
+
+  // spawn tickets
+  if(S.spawned<S.toSpawn){
+    S.spawnT-=dt;
+    if(S.spawnT<=0){ S.tickets.push(mkTicket()); S.spawned++; S.spawnT=S.spawnInt*(0.75+Math.random()*0.5); }
+  }
+  // the 7:30 seating — every night, a wave lands all at once
+  if(!S.wave730 && S.time>=(S.michelin?16:19)){
+    S.wave730=true;
+    const k=S.michelin?5:4;
+    for(let i=0;i<k;i++){ S.tickets.push(mkTicket()); S.toSpawn++; S.spawned++; }
+    sfx('bell'); toast('🚪 The 7:30 seating lands all at once. Deep breath.');
+  }
+
+  // hazards
+  S.hazT-=dt*(1/(S.hazMult||1));
+  if(S.hazT<=0){ spawnHazard(); S.hazT=(17+Math.random()*13); }
+
+  // crew movement
+  G.crew.forEach(c=>{ if(c.moveT>0) c.moveT-=dt; });
+
+  // FOH patience relief
+  let fohRelief=0;
+  G.crew.forEach(c=>{
+    if(c.station==='foh' && c.moveT<=0 && !c.out && !c.errand && !(c.coolT>0) && !(c.runT>0)){
+      fohRelief += 0.1+0.06*c.skills.foh + (c.trait==='maitred'?0.3:0);
+    }
+  });
+  fohRelief=Math.min(0.6,fohRelief);
+
+  // station work
+  const claimed=new Set();
+  G.crew.forEach(c=>{
+    if(!c.station || c.moveT>0 || c.out || c.errand || c.coolT>0) return;
+    if(c.runT>0){ // running a plate to the dining room
+      c.runT-=dt;
+      if(c.runT<=0){
+        const i=S.tickets.findIndex(t=>t.id===c.runTicket);
+        if(i>=0){ const t=S.tickets[i]; S.tickets.splice(i,1); ticketDone(t); }
+        c.runTicket=null;
+      }
+      return;
+    }
+    const st=G.stations[c.station];
+    // firefight / repair take priority anywhere
+    if(st.fire){
+      let r=1.3*(c.trait==='handy'?2.2:1);
+      st.fire-=r*dt; gainXp(c,'dish',dt*0.5);
+      if(st.fire<=0){ delete st.fire; delete st.fireT; sfx('fix'); toast('🧯 Fire out at '+stName(c.station)+'.'); }
+      return;
+    }
+    if(st.broken){
+      let r=1.3*(c.trait==='handy'?2.2:1);
+      st.broken-=r*dt; gainXp(c,'dish',dt*0.5);
+      if(st.broken<=0){ delete st.broken; sfx('fix'); toast('🔧 '+stName(c.station)+' back online.'); }
+      return;
+    }
+    if(c.station==='dish'){
+      S.dirty=Math.max(0,S.dirty-crewRate(c,'dish')*0.55*dt);
+      gainXp(c,'dish',dt*0.4);
+      return;
+    }
+    if(c.station==='foh'){ gainXp(c,'foh',dt*0.4); return; }
+    if(c.station==='expo'){
+      const t=S.tickets.find(t=>t.dishes.every(dishDone) && t.plateProg<t.plateNeed);
+      if(t){
+        t.plateProg+=crewRate(c,'expo')*dt; gainXp(c,'expo',dt*0.5);
+        if(t.plateProg>=t.plateNeed) sfx('level'); // "HANDS, PLEASE!"
+      }
+      return;
+    }
+    // cook stations — a dish can only fire if it's already on the stove or there's stock for it
+    const workable=d=>d.station===c.station && !d.x86 && d.prog<d.work && (d.stocked || G.stock[c.station]>0);
+    let dish=null;
+    outer:
+    for(const t of S.tickets){
+      for(let i=0;i<t.dishes.length;i++){
+        const d=t.dishes[i];
+        if(workable(d) && !claimed.has(t.id+'-'+i)){ dish=d; claimed.add(t.id+'-'+i); break outer; }
+      }
+    }
+    if(!dish){ // stack on first matching even if claimed
+      for(const t of S.tickets){ const d=t.dishes.find(workable); if(d){dish=d; break;} }
+    }
+    if(dish){
+      if(!dish.stocked){ G.stock[c.station]--; dish.stocked=true; }
+      dish.prog+=crewRate(c,c.station)*dt;
+      G.stations[c.station]._fired=true;
+      if(!dish.workers.includes(c.id)) dish.workers.push(c.id);
+      // interpersonal skill building: you learn fastest beside someone better than you
+      const mates=G.crew.filter(o=>o!==c && o.station===c.station && o.moveT<=0 && !o.out && !o.errand && !(o.coolT>0));
+      let xr=0.5;
+      const bestMate=mates.length?Math.max(...mates.map(o=>o.skills[c.station])):0;
+      const teach=bestMate-c.skills[c.station];
+      if(teach>0) xr*=1+0.9*teach*(mates.some(o=>o.trait==='mentor')?2:1);
+      else if(!mates.length) xr*=0.7;
+      gainXp(c,c.station,dt*xr);
+    }
+  });
+
+  // HANDS! — plated tickets need a runner (FOH first, expo in a pinch)
+  const readyT=S.tickets.filter(t=>t.dishes.every(dishDone) && t.plateProg>=t.plateNeed && !t.runner);
+  if(readyT.length){
+    const runners=G.crew.filter(c=>!c.out && !c.errand && c.moveT<=0 && !(c.coolT>0) && !(c.runT>0) && (c.station==='foh'||c.station==='expo'))
+      .sort((a,b)=>(a.station==='foh'?0:1)-(b.station==='foh'?0:1));
+    for(const t of readyT){
+      const c=runners.shift(); if(!c) break;
+      t.runner=c.id; c.runTicket=t.id;
+      c.runT=(c.trait==='maitred'?1.0:1.5);
+    }
+    if(readyT.some(t=>!t.runner) && !S.handsWarned){
+      S.handsWarned=true;
+      sfx('bell');
+      toast('🖐 “HANDS, PLEASE!” — plated food dies at the pass until someone runs it. FOH runs food (expo covers in a pinch).');
+    }
+  }
+
+  // the line's flow — and pans abandoned mid-fire
+  COOK_STATIONS.forEach(sid=>{
+    const st=G.stations[sid];
+    if(st.fire || st.broken){ st.flow=0; st.idleT=0; }
+    else if(st._fired){ st.flow=Math.min(1,(st.flow||0)+dt/18); st.idleT=0; }
+    else { st.idleT=(st.idleT||0)+dt; if(st.idleT>2) st.flow=0; }
+    st._fired=false;
+    const hot=S.tickets.some(t=>t.dishes.some(d=>d.station===sid && !d.x86 && d.prog>0 && d.prog<d.work));
+    const manned=G.crew.some(c=>c.station===sid && c.moveT<=0 && !c.out && !c.errand && !(c.coolT>0));
+    if(hot && !manned && !st.fire && !st.broken){
+      st.abandonT=(st.abandonT||0)+dt;
+      if(st.abandonT>6 && Math.random()<dt*0.09){ st.fire=10; st.fireT=0; sfx('fire'); toast('🔥 Unattended pan at '+stName(sid)+' FLARES UP!'); }
+    } else st.abandonT=0;
+  });
+
+  // kitchen banter — when the line has a breath to spare
+  S.banterT-=dt;
+  if(S.banterT<=0 && !LAB){
+    S.banterT=9+Math.random()*8;
+    if(S.tickets.length<=7 && !Object.values(G.stations).some(st=>st.fire)){
+      const active=G.crew.filter(c=>!c.out && !c.errand && !(c.coolT>0) && c.moveT<=0);
+      const byStation={};
+      active.forEach(c=>{ if(c.station) (byStation[c.station]=byStation[c.station]||[]).push(c); });
+      const pairs=Object.values(byStation).filter(a=>a.length>=2);
+      let spoke=false;
+      if(pairs.length && Math.random()<0.65){
+        const grp=rnd(pairs);
+        const key=[grp[0].id,grp[1].id].sort().join('|');
+        const ex=BANTER_PAIR[key];
+        if(ex){ ex.forEach(([who,txt],i)=>{ setTimeout(()=>{ if(S && !S.over && !S.paused) showBubble(who,txt); }, i*1900); }); spoke=true; }
+      }
+      if(!spoke && active.length){
+        const c=rnd(active);
+        if(BANTER_SOLO[c.id]) showBubble(c.id, rnd(BANTER_SOLO[c.id]));
+      }
+    }
+  }
+
+  // stress: pressure cooks people; teammates cool them down
+  const nFires=Object.values(G.stations).filter(st=>st.fire).length;
+  const heat=Math.max(0,(S.tickets.length-4)*0.05) + nFires*0.22 + (S.dirty>=S.dirtyCap?0.12:0);
+  for(const c of G.crew){
+    if(c.out || c.errand) continue;
+    if(c.coolT>0){
+      c.coolT-=dt;
+      if(c.coolT<=0) toast('🚪 '+c.name+' is back on the line. “I\'m good.”');
+      continue;
+    }
+    let gain=heat*(c.trait==='perfection' && !G.flags.claire ? 1.5 : 1);
+    if(c.trait==='calm') gain=0;
+    let relief=0.08;
+    const mates=G.crew.filter(o=>o!==c && o.station===c.station && o.moveT<=0 && !o.out && !o.errand && !(o.coolT>0));
+    if(mates.length) relief+=0.1;
+    if(mates.some(o=>o.trait==='mentor')) relief+=0.3;
+    if(G.crew.some(o=>o.trait==='calm' && o.station && !o.out && !o.errand)) relief+=0.12;
+    if(c.station==='foh') relief+=0.12;
+    c.stress=clamp(c.stress+(gain-relief)*dt,0,12);
+    if(c.stress>=(c.trait==='mentor'?11.8:11) && c.trait!=='calm'){
+      c.stress=3; c.coolT=8;
+      mates.forEach(o=>{ o.stress=clamp(o.stress+2,0,12); });
+      repDelta(-1);
+      sfx('bad');
+      showBubble(c.id, BLOWUPS[c.id]||'💢');
+      toast('💢 '+(BLOWUPS[c.id]||c.name+' boils over.')+' −1 REP. Cooling off in the walk-in.');
+      if(G.rep<=0) return;
+    }
+  }
+
+  // patience
+  for(let i=S.tickets.length-1;i>=0;i--){
+    const t=S.tickets[i];
+    t.pat-=dt*(1-fohRelief);
+    if(t.pat<=0){
+      S.tickets.splice(i,1); S.failed++;
+      repDelta(-1);
+      sfx('bad');
+      G.crew.forEach(c=>{ if(!c.out && !c.errand && !(c.coolT>0)) c.stress=clamp(c.stress+1.2,0,12); });
+      toast('💢 '+t.table+' walked. −1 REP.');
+      if(G.rep<=0) return;
+    }
+  }
+
+  // fire damage over time + spread
+  Object.keys(G.stations).forEach(sid=>{
+    const st=G.stations[sid];
+    if(st.fire){
+      st.fireT=(st.fireT||0)+dt;
+      S.fireRepAcc+=dt;
+      if(st.fireT>12 && !st.spread){
+        st.spread=true;
+        const cand=COOK_STATIONS.filter(x=>x!==sid && !G.stations[x].fire && !G.stations[x].broken);
+        if(cand.length){ const nx=rnd(cand); G.stations[nx].fire=10; G.stations[nx].fireT=0; sfx('fire'); toast('🔥 The fire SPREAD to '+stName(nx)+'!'); }
+      }
+    }
+  });
+  if(S.fireRepAcc>=4){ S.fireRepAcc=0; repDelta(-1); toast('💨 Smoke in the dining room. −1 REP.'); if(G.rep<=0) return; }
+
+  // end condition
+  if(S.spawned>=S.toSpawn && S.tickets.length===0 && !S.over){
+    if(LAB) S.over=true; else endService();
+  }
+}
+
+function stName(sid){ return STATION_DEFS.find(s=>s.id===sid).name; }
+
+function endService(){
+  S.over=true;
+  Object.values(G.stations).forEach(st=>{ delete st.fire; delete st.fireT; delete st.broken; delete st.spread;
+    delete st.flow; delete st.idleT; delete st.abandonT; delete st._fired; });
+  G.crew.forEach(c=>{ c.runT=0; c.runTicket=null; c.coolT=0; });
+  const perfect=S.failed===0;
+  if(perfect) repDelta(2);
+  if(G.rep<=0) return;
+  if(S.michelin){ finale(); return; }
+  const grade= perfect?'A PERFECT SERVICE. +2 REP.':(S.failed<=2?'A solid night. Some tables walked.':'A rough one. The room felt it.');
+  modal('🔔 SERVICE COMPLETE',
+    `Tickets cleared: ${S.completed}\nTables walked: ${S.failed}\nEarned: $${S.earned}\n\n${grade}`,
+    [{label:'Wrap the station. Tomorrow it continues. →', fn:()=>{ S=null; nextDay(); gotoMap(); }}]);
+}
+
+function gameOver(){
+  if(S) S.over=true;
+  clearSave(); sfx('bad');
+  // never let a lingering overlay eat clicks on the end screen
+  document.getElementById('modal').classList.remove('on');
+  document.getElementById('pauseveil').classList.remove('on');
+  show('final');
+  document.getElementById('final-h').textContent='CLOSED';
+  document.getElementById('final-h').style.color='var(--danger)';
+  document.getElementById('final-body').innerHTML =
+    `<p>The reputation is gone. Cicero makes the call. The chairs go up on the tables one last time,
+    and somebody — probably Fak — forgets to turn off the OPEN sign.</p>
+    <p style="margin-top:12px;" class="muted">Chicago keeps the window, though. Somebody will always sell beef here.</p>
+    <p style="margin-top:12px;" class="red">THE BEAR IS CLOSED. · Day ${G.day} · $${G.money} left in the drawer</p>`;
+}
+
+function finale(){
+  clearSave();
+  document.getElementById('modal').classList.remove('on');
+  document.getElementById('pauseveil').classList.remove('on');
+  show('final');
+  sfx(S.failed<=6?'bell':'bad');
+  const f=S.failed;
+  let h,body;
+  if(f<=3){
+    h='⭐⭐'; document.getElementById('final-h').style.color='var(--accent)';
+    body=`<p>The storm breaks around midnight. The last plate goes out clean. And then the phone call:
+    the inspector wasn't even there tonight — <b>he came months ago</b>. It was already done.</p>
+    <p style="margin-top:12px;" class="gold"><b>TWO MICHELIN STARS.</b></p>
+    <p style="margin-top:12px;">Carmy looks at Sydney and says the only thing left to say: <b>“You got two.”</b>
+    He hangs up his apron — the restaurant is hers now. Marcus gets the recipe books.
+    Ebraheim gets his franchise. Richie boards a flight to Japan with Jessica.
+    And somewhere, Cicero actually smiles.</p>
+    <p style="margin-top:12px;" class="muted">Tickets cleared: ${S.completed} · Tables walked: ${f} · Final REP: ${G.rep}/${G.repMax} · $${G.money}</p>
+    <p style="margin-top:12px;" class="gold">EVERY SECOND COUNTED. YES, CHEF.</p>`;
+  } else if(f<=6){
+    h='⭐'; document.getElementById('final-h').style.color='var(--accent)';
+    body=`<p>Not the perfect night you wanted — the storm took its bites. But the food was honest and the room felt it.</p>
+    <p style="margin-top:12px;" class="gold"><b>ONE MICHELIN STAR.</b></p>
+    <p style="margin-top:12px;">Sydney takes the pass full-time. Carmy steps back. The Bear survives — scarred, starred, still standing.</p>
+    <p style="margin-top:12px;" class="muted">Tickets cleared: ${S.completed} · Tables walked: ${f} · Final REP: ${G.rep}/${G.repMax}</p>`;
+  } else {
+    h='—'; document.getElementById('final-h').style.color='var(--steel)';
+    body=`<p>The storm won. Too many tables walked, and the guide stays silent this year.</p>
+    <p style="margin-top:12px;">But the doors are still open. Tina runs the line now. There's always next year, and in this kitchen
+    that has to be enough.</p>
+    <p style="margin-top:12px;" class="muted">Tickets cleared: ${S.completed} · Tables walked: ${f} · Final REP: ${G.rep}/${G.repMax}</p>`;
+  }
+  document.getElementById('final-h').textContent=h;
+  document.getElementById('final-body').innerHTML=body;
+}
+
+/* ============================== SERVICE RENDER ============================== */
+const STATION_POS={
+  stove: {x:2,  y:3,  w:38, h:20, slots:[[10,21],[22,21],[34,21]]},
+  pastry:{x:42, y:3,  w:26, h:20, slots:[[49,21],[61,21]]},
+  garde: {x:70, y:3,  w:28, h:20, slots:[[77,21],[90,21]]},
+  walkin:{x:2,  y:31, w:16, h:15, slots:[[7,44],[13,44]]},
+  dish:  {x:2,  y:51, w:16, h:31, slots:[[8,72],[14,78]]},
+  window:{x:82, y:31, w:16, h:36, slots:[[90,50],[90,62]]},
+  expo:  {x:24, y:40, w:52, h:22, slots:[[34,39],[50,39],[66,39],[42,67],[58,67]]},
+  foh:   {x:24, y:76, w:52, h:21, slots:[[34,92],[50,92],[66,92]]},
+};
+function zoneCenter(sid){ const p=STATION_POS[sid]||STATION_POS.foh; return [p.x+p.w/2, p.y+p.h/2]; }
+function moveDur(a,b){
+  if(!a) return 0.6;
+  const [ax,ay]=zoneCenter(a),[bx,by]=zoneCenter(b);
+  return Math.min(2.6, 0.4+Math.hypot(bx-ax,by-ay)*0.022);
+}
+
+let FLOOR=null;
+function buildFloor(){
+  const floor=document.getElementById('floor');
+  floor.innerHTML='';
+  FLOOR={svc:S, zones:{}, chefs:{}};
+  const mkZone=(sid,label,extraClass,clickable)=>{
+    const p=STATION_POS[sid];
+    const z=document.createElement('div');
+    z.className='zone'+(extraClass?' '+extraClass:'');
+    z.style.left=p.x+'%'; z.style.top=p.y+'%'; z.style.width=p.w+'%'; z.style.height=p.h+'%';
+    if(clickable) z.dataset.station=sid;
+    const lab=document.createElement('div'); lab.className='zlabel'; lab.innerHTML=label+' <span class="zlvl"></span>';
+    const stat=document.createElement('div'); stat.className='zstat';
+    const barwrap=document.createElement('div'); barwrap.className='minibar';
+    const bar=document.createElement('div'); barwrap.appendChild(bar);
+    const fx=document.createElement('div'); fx.className='hazfx';
+    z.appendChild(lab); z.appendChild(stat); z.appendChild(barwrap); z.appendChild(fx);
+    floor.appendChild(z);
+    FLOOR.zones[sid]={el:z, lvl:lab.children?lab:null, stat, bar, barwrap, fx, lab};
+    return z;
+  };
+  STATION_DEFS.forEach(def=>{
+    const label = def.id==='expo' ? '🖨️ THE PASS · EXPO'
+      : def.id==='foh' ? '🎩 FRONT OF HOUSE · 🚪 DINING ROOM'
+      : def.icon+' '+def.name;
+    mkZone(def.id, label, def.id==='expo'?'isle':'', true);
+  });
+  mkZone('walkin','🧊 WALK-IN','walkinz', false);
+  G.crew.forEach(c=>{
+    const el=document.createElement('div');
+    el.className='chef'; el.dataset.crew=c.id;
+    const face=document.createElement('span'); face.className='face'; face.textContent=c.emoji;
+    const mood=document.createElement('span'); mood.className='mood';
+    face.appendChild(mood);
+    const sbar=document.createElement('span'); sbar.className='sbar';
+    const sfill=document.createElement('i'); sbar.appendChild(sfill);
+    const tag=document.createElement('span'); tag.className='tag';
+    el.appendChild(face); el.appendChild(sbar); el.appendChild(tag);
+    el.style.transitionDuration='0s';
+    document.getElementById('floor').appendChild(el);
+    FLOOR.chefs[c.id]={el, face, mood, sfill, tag};
+  });
+}
+
+function updateFloor(){
+  STATION_DEFS.forEach(def=>{
+    const z=FLOOR.zones[def.id], st=G.stations[def.id];
+    z.el.classList.toggle('target', !!selCrew);
+    z.el.classList.toggle('onfire', !!st.fire);
+    z.el.classList.toggle('broken', !!st.broken);
+    const zl=z.lab.querySelector ? z.lab.querySelector('.zlvl') : null;
+    if(zl) zl.textContent='▲'.repeat(st.level);
+    let stat='', barw=0, barc='', fx='';
+    if(st.fire){ stat='<span class="red">FIRE — get bodies on it!</span>'; barw=100*st.fire/10; barc='var(--danger)'; fx='🔥'; }
+    else if(st.broken){ stat='<span style="color:#c8a030;">broken — needs hands</span>'; barw=100*st.broken/12; barc='#c8a030'; fx='🔩'; }
+    else if(COOK_STATIONS.includes(def.id)){
+      const q=S.tickets.reduce((a,t)=>a+t.dishes.filter(d=>d.station===def.id && !d.x86 && d.prog<d.work).length,0);
+      const n=G.stock[def.id];
+      stat=(n<=0?'<span class="red">📦 OUT OF STOCK</span>':'📦 '+n)+' · '+q+' to fire';
+      if((st.flow||0)>0.12) stat+=' · <span class="gold">'+'»'.repeat(1+Math.round(2*st.flow))+'</span>';
+    }
+    else if(def.id==='expo'){
+      const hands=S.tickets.filter(t=>t.dishes.every(dishDone) && t.plateProg>=t.plateNeed).length;
+      const plating=S.tickets.filter(t=>t.dishes.every(dishDone) && t.plateProg<t.plateNeed).length;
+      stat=plating+' plating'+(hands?' · <span class="red">🖐 HANDS! ×'+hands+' — dying at the pass</span>':'');
+      z.el.classList.toggle('hands', hands>0);
+    }
+    else if(def.id==='dish'){
+      barw=Math.min(100,100*S.dirty/S.dirtyCap);
+      barc=S.dirty>=S.dirtyCap?'var(--danger)':'var(--steel)';
+      stat=S.dirty>=S.dirtyCap?'<span class="red">PIT FULL — 60% speed</span>':Math.round(S.dirty)+'/'+S.dirtyCap+' dishes';
+    }
+    else if(def.id==='foh'){
+      const n=G.crew.filter(c=>c.station==='foh' && c.moveT<=0 && !c.out && !c.errand && !(c.coolT>0)).length;
+      stat=n?'soothing the room · running plates':'<span class="red">nobody on the floor</span>';
+    }
+    z.stat.innerHTML=stat;
+    z.bar.style.width=barw+'%'; z.bar.style.background=barc;
+    z.barwrap.style.visibility=barw>0?'visible':'hidden';
+    z.fx.textContent=fx;
+  });
+  const slotIdx={};
+  const active=G.crew.filter(c=>!c.out && !c.errand);
+  active.forEach((c,i)=>{
+    const f=FLOOR.chefs[c.id]; if(!f) return;
+    f.el.style.display='';
+    const sid=c.coolT>0?'walkin':(c.station||'foh');
+    const pos=STATION_POS[sid]||STATION_POS.foh;
+    const slots=pos.slots;
+    const si=slotIdx[sid]=(slotIdx[sid]||0);
+    slotIdx[sid]++;
+    const s=slots[Math.min(si,slots.length-1)];
+    const ox=si>=slots.length ? (si-slots.length+1)*4 : 0;
+    f.el.style.left=(s[0]+ox)+'%'; f.el.style.top=s[1]+'%';
+    f.el.classList.toggle('sel', selCrew===c.id);
+    f.el.classList.toggle('moving', c.moveT>0);
+    f.el.classList.toggle('cooling', c.coolT>0);
+    f.mood.textContent = c.coolT>0?'🧊' : (c.runT>0?'🍽️' : (c.stress>7?'💢':''));
+    f.sfill.style.width=Math.round(100*c.stress/10)+'%';
+    f.sfill.style.background=c.stress>7?'var(--danger)':(c.stress>4.5?'var(--accent)':'var(--ok)');
+    f.tag.textContent=(i+1)+'·'+c.name;
+  });
+  G.crew.filter(c=>c.out||c.errand).forEach(c=>{
+    const f=FLOOR.chefs[c.id]; if(f) f.el.style.display='none';
+  });
+}
+
+function renderService(force){
+  if(!S) return;
+  if(!FLOOR || FLOOR.svc!==S) buildFloor();
+  updateFloor();
+
+  // tickets
+  const rail=document.getElementById('rail');
+  let th=`<div class="muted" style="font-size:.8rem; text-align:center;">TICKETS — ${S.tickets.length} open · ${Math.max(0,S.toSpawn-S.spawned)} still coming</div>`;
+  S.tickets.forEach(t=>{
+    const allDone=t.dishes.every(dishDone);
+    const pct=100*t.pat/t.patMax;
+    const pc= pct>50?'#5fbf77':(pct>25?'#e0a030':'#e05252');
+    th+=`<div class="tkt">
+      <div class="thead"><span>#${String(t.id).padStart(3,'0')} ${t.table}</span><span>${allDone?'<span class="plated-tag">AT THE PASS</span>':''}</span></div>
+      ${t.dishes.map(d=>{
+        const done=dishDone(d); const sdef=STATION_DEFS.find(s=>s.id===d.station);
+        const btn=(!done && G.tokens>0)?`<button class="b86" data-d86="${d.name}" title="86 this item — strike it from every ticket, off the menu tonight">86</button>`:'';
+        const right=d.x86?'<span class="red" style="font-size:.7rem;font-weight:bold;">86’D</span>'
+          :(!done && !d.stocked && G.stock[d.station]<=0)?'<span class="red" style="font-size:.7rem;">NO STOCK</span>'
+          :`<span class="dishbar"><div style="width:${Math.min(100,100*d.prog/d.work)}%;"></div></span>`;
+        return `<div class="dish ${done?'done':''}"><span>${sdef.icon} ${d.name}</span>
+          <span style="display:flex;align-items:center;gap:5px;">${btn}${right}</span></div>`;
+      }).join('')}
+      ${allDone?(t.plateProg>=t.plateNeed
+        ?(t.runner?`<div class="dish"><span>🍽️ ${crewById(t.runner)?crewById(t.runner).name:''} is running it…</span></div>`
+                  :`<div class="dish"><span class="red" style="font-weight:bold;">🖐 HANDS! needs a runner (FOH)</span></div>`)
+        :`<div class="dish"><span>🖨️ plating at the pass…</span><span class="dishbar"><div style="width:${Math.min(100,100*t.plateProg/t.plateNeed)}%;background:#2a7a3d;"></div></span></div>`):''}
+      <div class="patience"><div style="width:${pct}%;background:${pc};"></div></div>
+    </div>`;
+  });
+  rail.innerHTML=th;
+
+  // roster
+  const r=document.getElementById('roster');
+  r.innerHTML='<span class="muted" style="font-size:.78rem;">BRIGADE:</span> '+
+    G.crew.filter(c=>!c.out && !c.errand).map((c,i)=>chipHtml(c,i+1)).join('');
+}
+function chipHtml(c, num){
+  const sel=selCrew===c.id?' sel':'';
+  const mov=c.moveT>0?' moving':'';
+  const where=c.station?STATION_DEFS.find(s=>s.id===c.station).icon:'—';
+  return `<span class="chip${sel}${mov}" data-crew="${c.id}" title="${c.traitTxt}">${num?num+'·':''}${c.emoji} ${c.name}${num?' <span class="muted">'+where+'</span>':''}</span>`;
+}
+
+/* ============================== THE PREP LAB ==============================
+   The morning prep problem, formalized as a two-stage stochastic program and
+   solved by sample average approximation over seeded full-service simulations. */
+const LAB_LAMBDA=8; // $ penalty per walked table (reputation → future covers)
+const LAB_TEMPLATES=[
+  {name:'default line', o:null},
+  {name:'dedicated runner', o:{richie:'foh'}},
+  {name:'double hot line', o:{tina:'stove', richie:'foh'}},
+  {name:'window rush', o:{tina:'window'}},
+  {name:'double expo', o:{sugar:'expo'}},
+  {name:'second runner', o:{ebra:'foh', richie:'foh'}},
+];
+let LABST={bans:{}, N:8, recourse:true, last:null, running:false};
+
+function mulberry32(a){
+  return function(){ a|=0; a=a+0x6D2B79F5|0; let t=Math.imul(a^a>>>15,1|a);
+    t=t+Math.imul(t^t>>>7,61|t)^t; return ((t^t>>>14)>>>0)/4294967296; };
+}
+// one seeded, silent, side-effect-free service; returns the night's outcome
+function labSimService(plan, seed, tmpl){
+  const realG=G, realS=S, realRnd=Math.random, realFloor=FLOOR;
+  LAB=true;
+  Math.random=mulberry32(seed);
+  G=JSON.parse(JSON.stringify(realG));
+  G.plan=plan; G.rep=999; G.repMax=999;
+  S=null;
+  startService(false);
+  if(tmpl) Object.entries(tmpl).forEach(([id,st])=>{ const c=crewById(id); if(c && c.station) c.station=st; });
+  let g=0;
+  while(S && !S.over && g++<20000) update(0.1);
+  const out={earned:S.earned, failed:S.failed, completed:S.completed};
+  G=realG; S=realS; Math.random=realRnd; FLOOR=realFloor; LAB=false;
+  return out;
+}
+// SAA estimate of a plan: same seeds for every candidate (common random numbers)
+function labEval(plan, N, recourse){
+  const profits=[], walked=[];
+  for(let i=0;i<N;i++){
+    const seed=100003+i*7919;
+    let best=-Infinity, bw=0;
+    const tmpls=recourse?LAB_TEMPLATES:[LAB_TEMPLATES[0]];
+    for(const t of tmpls){
+      const r=labSimService(plan, seed, t.o);
+      const p=r.earned-LAB_LAMBDA*r.failed;
+      if(p>best){ best=p; bw=r.failed; }
+    }
+    profits.push(best); walked.push(bw);
+  }
+  const mean=a=>a.reduce((x,y)=>x+y,0)/a.length;
+  return {profit:mean(profits), walked:mean(walked), worst:Math.min(...profits), best:Math.max(...profits)};
+}
+function labClosure(cid){ // a component plus its unmet prerequisites
+  const c=COMPONENTS[cid], need=[cid];
+  if(c.req) need.unshift(c.req);
+  return need;
+}
+function labPlanHours(plan){ return Object.keys(plan).reduce((a,k)=>a+(COMPONENTS[k]?COMPONENTS[k].hours:0),0); }
+// greedy forward selection by marginal profit per hour, then a drop pass
+function labGreedy(N, cap, bans, onstep){
+  let plan={};
+  let cur=labEval(plan, N, false);
+  const usable=Object.keys(COMPONENTS).filter(k=>!bans[k] && !(COMPONENTS[k].req && bans[COMPONENTS[k].req]));
+  for(let round=0; round<usable.length; round++){
+    let pick=null, pickVal=0, pickPlan=null;
+    for(const cid of usable){
+      if(plan[cid]) continue;
+      const bundle=labClosure(cid).filter(k=>!plan[k]);
+      const cost=bundle.reduce((a,k)=>a+COMPONENTS[k].hours,0);
+      if(labPlanHours(plan)+cost>cap) continue;
+      const cand={...plan}; bundle.forEach(k=>{ cand[k]=true; });
+      const e=labEval(cand, N, false);
+      const gain=(e.profit-cur.profit)/cost;
+      if(gain>pickVal){ pickVal=gain; pick=e; pickPlan=cand; }
+      if(onstep) onstep();
+    }
+    if(!pickPlan) break;
+    plan=pickPlan; cur=pick;
+  }
+  // drop pass: shed anything that doesn't pay its way
+  for(const cid of Object.keys(plan)){
+    if(Object.keys(plan).some(k=>COMPONENTS[k].req===cid && plan[k])) continue;
+    const cand={...plan}; delete cand[cid];
+    const e=labEval(cand, N, false);
+    if(onstep) onstep();
+    if(e.profit>=cur.profit){ plan=cand; cur=e; }
+  }
+  return {plan, est:cur};
+}
+
+function openLab(){ show('lab'); topbar('the prep lab'); renderLab(); }
+function labPlanChips(plan, prev){
+  const order=Object.keys(COMPONENTS).sort((a,b)=>(COMPONENTS[a].req?1:0)-(COMPONENTS[b].req?1:0));
+  return order.filter(k=>plan[k]||(prev&&prev[k])).map(k=>{
+    const c=COMPONENTS[k];
+    const now=!!plan[k], was=prev?!!prev[k]:now;
+    const tag=(now&&!was)?'✚ ':(!now&&was)?'✖ ':'';
+    const style=(!now&&was)?'text-decoration:line-through; color:var(--danger); border-color:var(--danger);'
+      :(now&&!was)?'color:var(--ok); border-color:var(--ok);':'color:var(--bright);';
+    return `<span style="border:1px solid var(--line); border-radius:8px; padding:1px 7px; font-size:.68rem; ${style}">${tag}${c.name} ${c.hours}h</span>`;
+  }).join(' ');
+}
+function renderLab(){
+  document.getElementById('lab-model').innerHTML=`
+<h2 style="font-size:.95rem;">THE MODEL</h2>
+<pre style="font-size:.68rem; line-height:1.55; white-space:pre-wrap; color:var(--bright);">
+<b class="gold">STAGE 1 — 7 AM, here-and-now</b> (demand unknown)
+  x_c ∈ {0,1}   prep component c
+  s.t.  Σ h_c·x_c ≤ H   (H = 2 × chefs in building)
+        x_c ≤ x_pre(c)  (no demi-glace without stock)
+
+<b class="gold">UNCERTAINTY ω</b> — the night reveals itself
+  ticket count &amp; timing (incl. the 7:30 wave), each
+  ticket's dishes (station- and day-weighted), patience,
+  hazards, blowups. Distribution = the game's generative
+  model; it drifts with the season (window-heavy early,
+  fine dining late).
+
+<b class="gold">STAGE 2 — 6 PM, recourse</b> (after ω is seen)
+  y ∈ Y   staffing template for the night. In real play y
+  is your continuous micro; the lab uses ${LAB_TEMPLATES.length} templates to
+  keep recourse honest but finite.
+
+<b class="gold">OBJECTIVE</b>
+  max_x E_ω[ max_y  earned(x,y,ω) − λ·walked(x,y,ω) ],  λ=$${LAB_LAMBDA}
+
+<b class="gold">SAA</b> — E_ω ≈ (1/N)Σ f(x,y,ωᵢ): N full seeded services.
+  The same seeds score every candidate x (<b>common random
+  numbers</b>) so plans are compared on identical nights and
+  noise cancels in the differences.
+
+<b class="gold">THINGS TO TRY</b>
+  · Solve, then re-solve with a component banned (supplier
+    shorted you) — watch chains collapse &amp; substitutes enter.
+  · Budget sweep: how does x* degrade as chefs leave for
+    errands? Which components survive to H=3?
+  · Recourse on vs off ≈ the value of adapting staffing
+    after you've seen the book.
+</pre>`;
+  const ctl=document.getElementById('lab-controls');
+  const banChips=Object.keys(COMPONENTS).map(k=>{
+    const b=!!LABST.bans[k];
+    return `<button onclick="labBan('${k}')" style="font-size:.66rem; padding:1px 7px; border-radius:8px;${b?' color:var(--danger); border-color:var(--danger); text-decoration:line-through;':''}">${COMPONENTS[k].name}</button>`;
+  }).join(' ');
+  ctl.innerHTML=`
+    <h2 style="font-size:.95rem;">SOLVER</h2>
+    <div class="row"><span>Scenarios N</span><span>
+      ${[4,8,16].map(n=>`<button onclick="LABST.N=${n};renderLab()" style="${LABST.N===n?'color:var(--accent);border-color:var(--accent);':''}">${n}</button>`).join(' ')}</span></div>
+    <div class="row"><span>Stage-2 recourse (staffing templates)</span>
+      <button onclick="LABST.recourse=!LABST.recourse;renderLab()" style="${LABST.recourse?'color:var(--ok);border-color:var(--ok);':''}">${LABST.recourse?'ON':'OFF'}</button></div>
+    <div class="row" style="align-items:flex-start;"><span>Ban components<br><span class="muted" style="font-size:.68rem;">(the supplier shorted you)</span></span>
+      <span style="display:flex; flex-wrap:wrap; gap:4px; justify-content:flex-end; max-width:60%;">${banChips}</span></div>
+    <div class="row"><span></span><span>
+      <button onclick="labSolve()" ${LABST.running?'disabled':''}>▶ SOLVE (H=${prepCap()})</button>
+      <button onclick="labSweep()" ${LABST.running?'disabled':''}>📉 BUDGET SWEEP</button></span></div>
+    <div id="lab-progress" class="muted" style="font-size:.75rem; margin:6px 0;"></div>`;
+  if(!LABST.running && !document.getElementById('lab-results').innerHTML)
+    document.getElementById('lab-results').innerHTML='<p class="muted" style="font-size:.78rem;">Solve to see the optimal plan for tonight\'s conditions (day '+G.day+', '+G.crew.filter(c=>!c.out&&!c.errand).length+' chefs in the building).</p>';
+}
+function labBan(k){ if(LABST.bans[k]) delete LABST.bans[k]; else LABST.bans[k]=true; renderLab(); }
+
+function labSolve(){
+  if(LABST.running) return;
+  LABST.running=true; renderLab();
+  const prog=document.getElementById('lab-progress');
+  prog.textContent='simulating…';
+  setTimeout(()=>{
+    const t0=Date.now();
+    let steps=0;
+    const r=labGreedy(LABST.N, prepCap(), LABST.bans, ()=>{ steps++; });
+    const withRec=labEval(r.plan, LABST.N, LABST.recourse);
+    const noRec=LABST.recourse?labEval(r.plan, LABST.N, false):withRec;
+    const empty=labEval({}, LABST.N, LABST.recourse);
+    const yours=labEval(G.plan, LABST.N, LABST.recourse);
+    const prev=LABST.last;
+    LABST.last=r.plan;
+    const secs=((Date.now()-t0)/1000).toFixed(1);
+    const fmt=e=>`E[profit] <b class="gold">$${e.profit.toFixed(0)}</b> · E[walked] ${e.walked.toFixed(1)} · range $${e.worst.toFixed(0)}…$${e.best.toFixed(0)}`;
+    document.getElementById('lab-results').innerHTML=`
+      <h2 style="font-size:.95rem;">x* — OPTIMAL PLAN <span class="muted" style="font-size:.7rem;">(${labPlanHours(r.plan)}h of ${prepCap()} · ${steps} candidate evals · ${secs}s)</span></h2>
+      <p style="margin:6px 0; line-height:2;">${labPlanChips(r.plan, prev)||'<span class="muted">prep nothing (!)</span>'}</p>
+      ${prev?'<p class="muted" style="font-size:.68rem;">✚ entered / ✖ left the plan vs your previous solve.</p>':''}
+      <div class="row"><span>x* ${LABST.recourse?'with recourse':''}</span><span style="font-size:.75rem;">${fmt(withRec)}</span></div>
+      ${LABST.recourse?`<div class="row"><span>x*, default staffing only</span><span style="font-size:.75rem;">${fmt(noRec)} <span class="green">(recourse worth $${(withRec.profit-noRec.profit).toFixed(0)})</span></span></div>`:''}
+      <div class="row"><span>your current plan</span><span style="font-size:.75rem;">${fmt(yours)}</span></div>
+      <div class="row"><span>no prep at all</span><span style="font-size:.75rem;">${fmt(empty)}</span></div>
+      <div class="center" style="margin-top:8px;"><button onclick="labApply()">USE x* AS TODAY'S PREP</button></div>`;
+    prog.textContent='';
+    LABST.running=false; renderLab();
+  }, 30);
+}
+function labSweep(){
+  if(LABST.running) return;
+  LABST.running=true; renderLab();
+  document.getElementById('lab-progress').textContent='sweeping the budget…';
+  setTimeout(()=>{
+    const caps=[]; for(let hh=prepCap(); hh>=3; hh-=3) caps.push(hh);
+    const rows=caps.map(hh=>({h:hh, r:labGreedy(LABST.N, hh, LABST.bans)}));
+    const order=Object.keys(COMPONENTS).sort((a,b)=>(COMPONENTS[a].req?1:0)-(COMPONENTS[b].req?1:0));
+    let h='<h2 style="font-size:.95rem;">📉 BUDGET SWEEP — x* as hours vanish</h2>';
+    h+='<div style="overflow-x:auto;"><table style="border-collapse:collapse; font-size:.68rem; width:100%;">';
+    h+='<tr><th style="text-align:left; padding:2px 6px;">component</th>'+rows.map(r=>`<th style="padding:2px 6px;">H=${r.h}</th>`).join('')+'</tr>';
+    order.forEach(k=>{
+      if(!rows.some(r=>r.r.plan[k])) return;
+      h+=`<tr><td style="padding:2px 6px; border-top:1px solid var(--line);">${COMPONENTS[k].name}${COMPONENTS[k].req?' <span class="muted">↳'+COMPONENTS[COMPONENTS[k].req].name+'</span>':''}</td>`
+        +rows.map(r=>`<td style="text-align:center; border-top:1px solid var(--line);">${r.r.plan[k]?'<span class="green">✓</span>':'·'}</td>`).join('')+'</tr>';
+    });
+    h+=`<tr><td style="padding:2px 6px; border-top:2px solid var(--line);">E[profit]</td>`
+      +rows.map(r=>`<td style="text-align:center; border-top:2px solid var(--line);" class="gold">$${r.r.est.profit.toFixed(0)}</td>`).join('')+'</tr></table></div>';
+    h+='<p class="muted" style="font-size:.68rem; margin-top:6px;">Read right to left: as chefs leave for errands, which components hold their slot, which chains collapse, and what the hours are actually worth.</p>';
+    document.getElementById('lab-results').innerHTML=h;
+    document.getElementById('lab-progress').textContent='';
+    LABST.running=false; renderLab();
+  }, 30);
+}
+function labApply(){
+  if(!LABST.last) return;
+  const clean={};
+  Object.keys(LABST.last).forEach(k=>{ if(!LABST.bans[k]) clean[k]=true; });
+  if(labPlanHours(clean)<=prepCap()){ G.plan=clean; save(); toast('🔪 x* is on the board. Yes, chef.'); gotoMap(); }
+  else toast('Not enough hours in the building for that plan today.');
+}
+
+/* ============================== INPUT ============================== */
+document.getElementById('service').addEventListener('mousedown', e=>{
+  const chip=e.target.closest('[data-crew]');
+  if(chip){ selCrew = selCrew===chip.dataset.crew? null : chip.dataset.crew; renderService(true); return; }
+  const b86=e.target.closest('[data-d86]');
+  if(b86 && S && G.tokens>0){
+    const name=b86.dataset.d86;
+    G.tokens--;
+    S.banned.push(name);
+    S.tickets.forEach(t=>t.dishes.forEach(d=>{ if(d.name===name && d.prog<d.work) d.x86=true; }));
+    topbar(); toast('🚫 86 the '+name+' — off the menu tonight, struck from every ticket.'); renderService(true);
+    return;
+  }
+  const stEl=e.target.closest('[data-station]');
+  if(stEl && selCrew && S && !S.over){
+    const c=crewById(selCrew);
+    if(c && c.station!==stEl.dataset.station && !(c.coolT>0) && !(c.runT>0)){
+      const dur=moveDur(c.station, stEl.dataset.station);
+      showBubble(c.id, rnd(['Yes, chef.','Heard.','Corner!','Behind!','On it.']));
+      c.station=stEl.dataset.station; c.moveT=dur;
+      const f=FLOOR && FLOOR.chefs[c.id];
+      if(f) f.el.style.transitionDuration=dur+'s';
+    }
+    selCrew=null; renderService(true);
+  }
+});
+// hover a prep component → transparent view of the dishes it feeds
+let hoverComp=null;
+document.addEventListener('mouseover', e=>{
+  const el=e.target.closest ? e.target.closest('[data-comp]') : null;
+  const hv=document.getElementById('comphover');
+  if(!el){ if(hoverComp){ hoverComp=null; hv.style.display='none'; } return; }
+  const cid=el.dataset.comp;
+  if(cid===hoverComp) return;
+  hoverComp=cid;
+  const c=COMPONENTS[cid];
+  const feeds=(compUsage()[cid]||[]);
+  hv.innerHTML=`<b class="gold">${c.name}</b> <span class="muted">${c.hours}h${c.type==='par'?' · par −$1/plate':''}${c.req?' · ⛓ needs '+COMPONENTS[c.req].name:''}</span>`
+    +(feeds.length?'<div style="margin-top:5px;">'+feeds.map(f=>
+      `<div>${STATION_DEFS.find(s=>s.id===f.station).icon} ${f.dish} <span class="green">−${Math.round(100*f.w)}%</span></div>`).join('')+'</div>'
+    :'<div class="muted">feeds nothing on the current menu</div>');
+  hv.style.display='block';
+});
+document.addEventListener('mousemove', e=>{
+  if(!hoverComp) return;
+  const hv=document.getElementById('comphover');
+  hv.style.left=Math.min(window.innerWidth-360, e.clientX+16)+'px';
+  hv.style.top=Math.min(window.innerHeight-(hv.offsetHeight||200)-16, e.clientY+14)+'px';
+});
+
+document.addEventListener('keydown', e=>{
+  if(!S || S.over) return;
+  if(e.code==='Space'){
+    e.preventDefault();
+    S.paused=!S.paused;
+    document.getElementById('pauseveil').classList.toggle('on',S.paused);
+    return;
+  }
+  if(e.key==='Escape'){ selCrew=null; renderService(true); }
+  const n=parseInt(e.key);
+  if(n>=1 && n<=8){
+    const list=G.crew.filter(c=>!c.out && !c.errand);
+    if(list[n-1]){ selCrew=list[n-1].id; renderService(true); }
+  }
+});
+
+/* ============================== LOOP ============================== */
+function frame(t){
+  const dt=Math.min(0.05,(t-lastT)/1000)||0; lastT=t;
+  if(S && !S.over && !S.paused){
+    update(dt);
+    uiAcc+=dt;
+    if(uiAcc>0.12){ uiAcc=0; if(S && !S.over) renderService(); }
+  }
+  requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>
