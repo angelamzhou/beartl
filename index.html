@@ -1137,8 +1137,10 @@ const PRESS_LINES=[
 function checkDemandNotice(){
   const mult=repVolumeMult();
   if(mult>(G.lastVolMult||1)+0.03){
-    const pct=Math.round((mult-1)*100);
-    toast('📰 '+rnd(PRESS_LINES)+' Expect a fuller book tonight — about +'+pct+'% covers.');
+    // deliberately vague — you get a heads-up that it's busier, not a forecast
+    // of exactly how much. Plan the walk-in for "busy," not for a number.
+    const feel = mult>1.2 ? 'packed' : (mult>1.1 ? 'a lot busier' : 'busier');
+    toast('📰 '+rnd(PRESS_LINES)+' Word is the book\'s going to run '+feel+' tonight.');
     sfx('level');
   }
   G.lastVolMult=mult;
