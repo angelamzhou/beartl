@@ -484,11 +484,17 @@ function showBubble(id, text){
 
 const ERRANDS={
   supply:{icon:'🚚', name:'SUPPLIER RUN', desc:'unlocks the catalog this morning — stock, upgrades, cellar, all 20% off stock'},
-  research:{icon:'🫙', name:'R&D RUN', desc:'start a Noma project — their skill at that station shapes the odds'},
+  research:{icon:'🫙', name:'R&D RUN', desc:'start a Noma project — their skill at that station shapes the odds. They\'re back on the line partway through tonight; the dish itself takes days to mature in the background'},
   drill:{icon:'🔪', name:'DRILLS', desc:'a big training day at their best station'},
   press:{icon:'📰', name:'TALK TO PRESS', desc:'+2 REP (+3 if they\'re good with people)'},
 };
 function crewById(id){ return G.crew.find(c=>c.id===id); }
+// sensible default station per chef — Richie covers the window until Ebraheim is recruited
+function defaultStationFor(id){
+  const order={carmy:'stove',sydney:'expo',tina:'garde',marcus:'pastry',
+    richie:recruited('ebra')?'foh':'window',ebra:'window',fak:'dish',sugar:'foh'};
+  return order[id]||'dish';
+}
 function recruited(id){ return !!crewById(id); }
 function recruit(id){
   if(recruited(id)) return;
@@ -761,7 +767,7 @@ function renderDayPlan(){
   if(G.day===12){
     h+='<p class="red" style="text-align:center; font-size:.85rem; margin-top:8px;">⭐ MICHELIN NIGHT — all hands on deck. No errands. Stock the walk-in DEEP and prep everything.</p>';
   } else {
-    h+=`<p class="muted" style="font-size:.8rem; margin-bottom:6px;">MORNING ERRANDS — send up to 2 chefs (${busy}/2 out). They'll miss tonight's service.</p>`;
+    h+=`<p class="muted" style="font-size:.8rem; margin-bottom:6px;">MORNING ERRANDS — send up to 2 chefs (${busy}/2 out). They join late, missing the first part of tonight's service.</p>`;
     Object.entries(ERRANDS).forEach(([id,e])=>{
       const who=G.crew.filter(c=>c.errand===id).map(c=>c.emoji+' '+c.name).join(', ');
       h+=`<div class="row"><span>${e.icon} <b>${e.name}</b> <span class="muted" style="font-size:.73rem;">${e.desc}</span></span>
@@ -783,7 +789,7 @@ function assignErrand(type){
   if(G.crew.filter(c=>c.errand).length>=2) return;
   const free=G.crew.filter(c=>!c.errand && !c.out);
   if(!free.length) return;
-  modal(ERRANDS[type].icon+' '+ERRANDS[type].name, 'Who goes? They\'ll miss tonight\'s service.',
+  modal(ERRANDS[type].icon+' '+ERRANDS[type].name, 'Who goes? They\'ll miss the first part of tonight\'s service, then join the line.',
     free.map(c=>({label:c.emoji+' '+c.name+' — '+c.traitTxt, fn:()=>doErrand(type,c)}))
       .concat([{label:'Nobody. Keep the line whole.', fn:null}]));
 }
@@ -1056,12 +1062,14 @@ function startService(michelin){
   if(ferm) toast('🫙 '+ferm.name+' on every plate. Diners are paying for the funk.');
   if(broth) toast('🍲 '+broth.name+' simmering on the back burner. The hot line hums.');
   delete G.flags.stormNext; delete G.flags.pep;
-  G.crew.forEach(c=>{ c.station=null; c.moveT=0; c.coolT=0; c.runT=0; c.runTicket=null; c.stress=S.speedBuff>1?0:2; });
+  G.crew.forEach(c=>{ c.station=null; c.moveT=0; c.coolT=0; c.runT=0; c.runTicket=null; c.stress=S.speedBuff>1?0:2; delete c.errandBackAt; });
   // sensible default assignments — every cook station needs a body, so Richie
   // covers the window until Ebraheim is recruited
-  const order={carmy:'stove',sydney:'expo',tina:'garde',marcus:'pastry',
-    richie:recruited('ebra')?'foh':'window',ebra:'window',fak:'dish',sugar:'foh'};
-  G.crew.forEach(c=>{ if(!c.out && !c.errand) c.station=order[c.id]||'dish'; });
+  G.crew.forEach(c=>{ if(!c.out && !c.errand) c.station=defaultStationFor(c.id); });
+  // errand chefs miss only the front half of the night — an on-call R&D run or
+  // supplier trip shouldn't cost the whole service, especially early with a thin crew
+  const backThreshold=0.42*S.toSpawn*S.spawnInt;
+  G.crew.forEach(c=>{ if(!c.out && c.errand) c.errandBackAt=backThreshold; });
   selCrew=null;
   if(LAB) return;
   show('service');
@@ -1161,6 +1169,16 @@ function spawnHazard(){
 function update(dt){
   if(!S || S.over || S.paused) return;
   S.time+=dt;
+
+  // errand chefs trickle back partway through the night and join the line
+  G.crew.forEach(c=>{
+    if(c.errand && c.errandBackAt!==undefined && S.time>=c.errandBackAt){
+      const from=c.errand;
+      c.errand=null; delete c.errandBackAt;
+      c.station=defaultStationFor(c.id); c.moveT=0; c.stress=0;
+      sfx('bell'); toast('🚪 '+c.name+' is back from '+ERRANDS[from].name.toLowerCase()+' — joining the line.');
+    }
+  });
 
   // spawn tickets
   if(S.spawned<S.toSpawn){
