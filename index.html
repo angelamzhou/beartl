@@ -307,17 +307,31 @@ function ensureStockDay(){
   return d;
 }
 
-/* The Cellar: ferment & dry-age inventory. Buy raw product, wait for it to mature,
-   spend it one service at a time. Storms without a generator can spoil maturing batches. */
-const FERM_NAMES=['Lacto Plum','Beet Garum','Rhubarb Kosho','Kimchi Butter','Honey Kombucha'];
+/* The Cellar: short-run consumable ferment & dry-age batches. Buy raw product,
+   wait for it to mature, spend it one service at a time. Storms without a
+   generator can spoil maturing batches. Separate from the permanent
+   FERMENTATION PROGRAMS below, which upgrade specific menu components for good. */
+const CELLAR_CAP=3;
+const FERM_NAMES=['Quick Pickle','24-Hr Kraut','Fast Kimchi','Vinegar Shrub'];
 const AGE_NAMES=['Ribeye Cap','Short Loin','Duck Crown','Pork Collar','A Frankly Enormous Bresaola'];
 const CELLAR_DEFS={
-  ferm:{icon:'🫙', label:'Ferment batch', cost:15, days:2, servings:2, names:FERM_NAMES,
+  ferm:{icon:'🥒', label:'Quick Ferment', cost:12, days:1, servings:2, names:FERM_NAMES,
     perk:'+$1 per ticket while stocked'},
-  age:{icon:'🥩', label:'Dry-age program', cost:18, days:3, servings:2, names:AGE_NAMES,
-    perk:'hot line & window +20% speed while stocked'},
-  broth:{icon:'🍲', label:'Mother stock', cost:10, days:1, servings:2, names:['Veal Stock','Chicken Jus','Dashi, Somehow','Ten-Hour Bone Broth'],
+  age:{icon:'🥩', label:'Dry-Age Program', cost:22, days:3, servings:3, names:AGE_NAMES,
+    perk:'hot line & window +25% speed while stocked'},
+  broth:{icon:'🍲', label:'Mother Stock', cost:10, days:1, servings:2, names:['Veal Stock','Chicken Jus','Dashi, Somehow','Ten-Hour Bone Broth'],
     perk:'hot line +15% speed while stocked'},
+};
+
+/* Fermentation Programs: a permanent, one-time investment in lacto-fermenting
+   a specific prep component. Pay in, wait it out — every dish on the menu
+   that uses that component gets better (and stays better) once it matures. */
+const FERMENTABLE=['brine','giard','cure','crisp'];
+const FERMENT_DEFS={
+  brine:{cost:18, days:3, valBonus:1, label:'Lacto-Ferment: Pickle Brine'},
+  cure:{cost:16, days:2, valBonus:1, label:'Lacto-Ferment: Citrus Cure'},
+  crisp:{cost:20, days:3, valBonus:2, label:'Lacto-Ferment: Chili Crisp'},
+  giard:{cost:26, days:5, valBonus:2, label:'Lacto-Ferment: Giardiniera'},
 };
 
 function genRndOffers(){
@@ -429,7 +443,7 @@ function newRun(){
   return {
     day:1, money:35, rep:30, repMax:40, tokens:2, cellar:[],
     stock:{stove:12, garde:12, pastry:10, window:12}, prices:rollPrices(),
-    plan:{}, stockHistory:[], todayBuys:{stove:[], garde:[], pastry:[], window:[]},
+    plan:{}, stockHistory:[], todayBuys:{stove:[], garde:[], pastry:[], window:[]}, ferments:{},
     crew: ALL_CREW.filter(c=>c.start).map(mkCrew),
     stations: Object.fromEntries(STATION_DEFS.map(s=>[s.id,{level:1}])),
     flags:{}, usedEvents:[], lastType:null, espresso:false, rnd:{}, rndOffers:genRndOffers(),
@@ -483,7 +497,7 @@ function showBubble(id, text){
 }
 
 const ERRANDS={
-  supply:{icon:'🚚', name:'SUPPLIER RUN', desc:'unlocks the catalog this morning — stock, upgrades, cellar, all 20% off stock'},
+  supply:{icon:'🚚', name:'SUPPLIER RUN', desc:'unlocks the catalog this morning — stock, tokens, cellar, all 20% off stock'},
   research:{icon:'🫙', name:'R&D RUN', desc:'start a Noma project — their skill at that station shapes the odds. They\'re back on the line partway through tonight; the dish itself takes days to mature in the background'},
   drill:{icon:'🔪', name:'DRILLS', desc:'a big training day at their best station'},
   press:{icon:'📰', name:'TALK TO PRESS', desc:'+2 REP (+3 if they\'re good with people)'},
@@ -538,6 +552,17 @@ function applyMenuExtras(){
     const [st,name,work,val]=p.dish;
     if(G.rnd && G.rnd[p.id] && G.rnd[p.id].done && !DISH_POOL[st].some(d=>d[0]===name)) DISH_POOL[st].push([name,work,val]);
   });
+  // re-apply matured fermentation upgrades — DISH_POOL is fresh/pristine on
+  // page load, so this only ever needs to run once per resume, never doubles up
+  Object.entries(G.ferments||{}).forEach(([cid,f])=>{
+    if(f.done && f.appliedTo){
+      const def=FERMENT_DEFS[cid];
+      f.appliedTo.forEach(({station,name})=>{
+        const d=station && DISH_POOL[station] && DISH_POOL[station].find(x=>x[0]===name);
+        if(d) d[2]+=def.valBonus;
+      });
+    }
+  });
 }
 function resumeRun(){
   try{
@@ -550,6 +575,7 @@ function resumeRun(){
     if(!G.plan) G.plan={};
     if(!G.stockHistory) G.stockHistory=[];
     if(!G.todayBuys) G.todayBuys={stove:[], garde:[], pastry:[], window:[]};
+    if(!G.ferments) G.ferments={};
     G.crew.forEach(c=>{ if(c.stress===undefined){ c.stress=0; c.coolT=0; c.errand=null; c.runT=0; c.runTicket=null; } });
     applyMenuExtras();
     topbar(''); gotoMap();
@@ -650,7 +676,7 @@ function gotoMap(){
       const skilled=(r.skill||1)>=2; // a chef who knows the station gets better odds
       if(roll<(skilled?0.12:0.25)){ // went sideways
         r.failed=true;
-        if(G.cellar.length<3){
+        if(G.cellar.length<CELLAR_CAP){
           G.cellar.push({type:'ferm', name:'Accidental '+rnd(FERM_NAMES), ready:G.day, left:1});
           sfx('bad'); toast('🦠 The '+p.dish[1]+' went sideways. It is, however, an excellent ferment — it\'s in the cellar.');
         } else {
@@ -665,6 +691,25 @@ function gotoMap(){
         sfx('level');
         toast(star ? '🌟 BREAKTHROUGH — '+name+' is transcendent. On the menu, +1 REP.' : p.arrive);
       }
+    }
+  });
+  // lacto-fermentation programs mature — a permanent value bump to every dish
+  // on the menu that uses that component, applied once and never reverted
+  Object.keys(G.ferments).forEach(cid=>{
+    const f=G.ferments[cid];
+    if(f && !f.done && G.day>=f.due){
+      f.done=true;
+      const def=FERMENT_DEFS[cid];
+      const touched=[];
+      (compUsage()[cid]||[]).forEach(u=>{
+        const d=DISH_POOL[u.station].find(x=>x[0]===u.dish);
+        if(d && touched.indexOf(d[0])<0){ d[2]+=def.valBonus; touched.push(d[0]); }
+      });
+      f.appliedTo=touched.map(name=>({station:COOK_STATIONS.find(s=>DISH_POOL[s].some(x=>x[0]===name)), name}));
+      sfx('level');
+      toast(touched.length
+        ? '🫙 '+def.label+' matures — '+touched.join(', ')+' just got better. +$'+def.valBonus+' each, for good.'
+        : '🫙 '+def.label+' matures, but no current dish uses it — the investment doesn\'t pay off this time.');
     }
   });
   save();
@@ -763,6 +808,20 @@ function renderDayPlan(){
     return saved>0?name+' <span class="green">−'+saved+'%</span>':null;
   }).filter(Boolean);
   if(impacted.length) h+=`<p style="font-size:.68rem; margin-top:6px;" class="muted">TONIGHT: ${impacted.join(' · ')}</p>`;
+  // permanent lacto-fermentation upgrades — invest once, the dish gets better for the rest of the run
+  h+='<div style="margin-top:14px; border-top:1px solid var(--line); padding-top:8px;">';
+  h+='<p class="muted" style="font-size:.8rem; margin-bottom:6px;">🫙 <b class="gold">LACTO-FERMENTATION PROGRAMS</b> — a permanent upgrade, not a nightly buff. Pay once, wait it out, every dish using that component pays more for good.</p>';
+  const usage2=compUsage();
+  FERMENTABLE.forEach(cid=>{
+    const def=FERMENT_DEFS[cid], comp=COMPONENTS[cid], f=G.ferments[cid];
+    const feeds=(usage2[cid]||[]).map(x=>x.dish);
+    const feedTxt=feeds.length?feeds.join(', '):'nothing on tonight\'s menu yet';
+    if(f && f.done) return; // already matured, permanently applied — nothing left to show
+    if(f) h+=`<div class="row"><span>🫙 ${def.label}</span><span class="muted" style="font-size:.78rem;">maturing — ready day ${f.due}</span></div>`;
+    else h+=`<div class="row"><span>🫙 ${def.label} <span class="muted" style="font-size:.72rem;">${def.days} days · feeds ${feedTxt} · +$${def.valBonus}/dish, forever</span></span>
+      <button onclick="buyFerment('${cid}')" ${G.money<def.cost?'disabled':''}>$${def.cost}</button></div>`;
+  });
+  h+='</div>';
   h+=`<div style="text-align:right; margin-top:4px;"><button onclick="openLab()" style="font-size:.7rem;" title="formalize the prep problem and solve it">📊 PREP LAB — learn stochastic optimization</button></div>`;
   if(G.day===12){
     h+='<p class="red" style="text-align:center; font-size:.85rem; margin-top:8px;">⭐ MICHELIN NIGHT — all hands on deck. No errands. Stock the walk-in DEEP and prep everything.</p>';
@@ -950,21 +1009,15 @@ function openShop(){
       <span>${bought.length?`<button onclick="undoBuy('${sid}')" title="undo the last case, full refund">↩ undo −6 (+$${lastCost})</button>`:''}
       <button onclick="buyCase('${sid}')" ${G.money<p?'disabled':''}>+6 units — $${p} ${mkt}</button></span></div>`;
   });
-  COOK_STATIONS.concat(['expo','dish']).forEach(sid=>{
-    const st=G.stations[sid], def=STATION_DEFS.find(s=>s.id===sid);
-    const cost=15+15*st.level;
-    h+=`<div class="row"><span>${def.icon} ${def.name} <span class="gold">Lv${st.level}</span></span>
-      ${st.level>=3?'<span class="muted">MAXED</span>':`<button onclick="buyUpgrade('${sid}',${cost})" ${G.money<cost?'disabled':''}>+30% speed — $${cost}</button>`}</div>`;
-  });
   h+=`<div class="row"><span>📰 Good press (+5 REP)</span><button onclick="buyRep()" ${G.money<18?'disabled':''}>$18</button></div>`;
   h+=`<div class="row"><span>🚫 86-token (strike a dish off the menu mid-service)</span><button onclick="buyToken()" ${G.money<8?'disabled':''}>$8</button></div>`;
   if(!G.espresso) h+=`<div class="row"><span>☕ Espresso machine (+10% kitchen speed, forever)</span><button onclick="buyEspresso()" ${G.money<30?'disabled':''}>$30</button></div>`;
-  h+=`<div class="row"><span><b>🧊 THE CELLAR</b> <span class="muted" style="font-size:.75rem;">(${G.cellar.length}/3 slots · storms without a generator can spoil maturing batches)</span></span></div>`;
+  h+=`<div class="row"><span><b>🧊 THE CELLAR</b> <span class="muted" style="font-size:.75rem;">(${G.cellar.length}/${CELLAR_CAP} slots · storms without a generator can spoil maturing batches)</span></span></div>`;
   G.cellar.forEach(b=>{
     const def=CELLAR_DEFS[b.type];
     h+=`<div class="row"><span>${def.icon} ${b.name}</span><span class="${G.day>=b.ready?'green':'muted'}" style="font-size:.8rem;">${G.day>=b.ready?'READY — '+b.left+' service'+(b.left>1?'s':'')+' left':'maturing — ready day '+b.ready}</span></div>`;
   });
-  if(G.cellar.length<3){
+  if(G.cellar.length<CELLAR_CAP){
     Object.entries(CELLAR_DEFS).forEach(([type,def])=>{
       h+=`<div class="row"><span>${def.icon} ${def.label} <span class="muted" style="font-size:.75rem;">${def.days} days to mature · ${def.servings} services of ${def.perk}</span></span>
         <button onclick="buyBatch('${type}')" ${G.money<def.cost?'disabled':''}>$${def.cost}</button></div>`;
@@ -979,7 +1032,6 @@ function openShop(){
   });
   el.innerHTML=h;
 }
-function buyUpgrade(sid,cost){ if(G.money>=cost && G.stations[sid].level<3){ G.money-=cost; G.stations[sid].level++; topbar(); openShop(); } }
 function buyRep(){ if(G.money>=18){ G.money-=18; repDelta(5); openShop(); } }
 function buyToken(){ if(G.money>=8){ G.money-=8; G.tokens++; topbar(); openShop(); } }
 function buyEspresso(){ if(G.money>=30){ G.money-=30; G.espresso=true; topbar(); openShop(); toast('☕ The machine gleams. Productivity soars.'); } }
@@ -1013,12 +1065,20 @@ function buyCase(sid){
 }
 function buyBatch(type){
   const def=CELLAR_DEFS[type];
-  if(G.money<def.cost || G.cellar.length>=3) return;
+  if(G.money<def.cost || G.cellar.length>=CELLAR_CAP) return;
   G.money-=def.cost;
   const name=rnd(def.names);
   G.cellar.push({type, name, ready:G.day+def.days, left:def.servings});
   topbar(); openShop();
   toast(def.icon+' '+name+' goes into the cellar. Ready day '+(G.day+def.days)+'.');
+}
+function buyFerment(cid){
+  const def=FERMENT_DEFS[cid];
+  if(!def || G.ferments[cid] || G.money<def.cost) return;
+  G.money-=def.cost;
+  G.ferments[cid]={due:G.day+def.days, done:false};
+  topbar(); save(); renderDayPlan();
+  toast('🫙 '+def.label+' started — ready day '+(G.day+def.days)+'.');
 }
 function buyRnd(id, chef){
   const p=G.rndOffers.find(p=>p.id===id);
@@ -1033,16 +1093,21 @@ function buyCrew(id,cost){ if(G.money>=cost && !recruited(id)){ G.money-=cost; r
 function leaveShop(){ gotoMap(); }
 
 /* ============================== SERVICE ============================== */
+// success brings more business — word gets around, but it's capped so a hot
+// streak can't spiral the volume out of control on its own
+function repVolumeMult(){
+  return 1 + 0.3*clamp((G.rep-30)/(G.repMax-30), 0, 1);
+}
 function startService(michelin){
   const day=G.day;
   const storm = michelin || !!G.flags.stormNext;
   S = {
     michelin, storm, over:false, paused:false,
-    toSpawn: michelin?16:(7+Math.ceil(day*0.6)),
+    toSpawn: michelin?16:Math.round((7+Math.ceil(day*0.8))*repVolumeMult()),
     spawned:0, spawnT:2.5,
     spawnInt: Math.max(2.8, (michelin?3.4:5.6-day*0.24)),
-    workScale: 1.7+day*0.055,
-    patScale: (michelin?0.9:1) * (1 - day*0.012),
+    workScale: 1.7+day*0.065,
+    patScale: (michelin?0.9:1) * (1 - day*0.016),
     hazT: 14+Math.random()*8, nextTid:1, banterT:6,
     usedStock:{stove:0, garde:0, pastry:0, window:0},
     tickets:[], banned:[], dirty:0, dirtyCap:12,
@@ -1134,7 +1199,7 @@ function ticketDone(t){
 function crewRate(c, sid){
   let r = 2.2*(1+0.35*c.skills[sid])*(1+0.3*(G.stations[sid].level-1));
   r *= 1+0.4*(G.stations[sid].flow||0);
-  if(S.buffAge && (sid==='stove'||sid==='window')) r*=1.2;
+  if(S.buffAge && (sid==='stove'||sid==='window')) r*=1.25;
   if(S.buffBroth && sid==='stove') r*=1.15;
   if(c.trait==='perfection') r*=1.3;
   const mates=G.crew.filter(o=>o!==c && o.station===c.station && o.moveT<=0);
@@ -1547,8 +1612,6 @@ function updateFloor(){
     z.el.classList.toggle('target', !!selCrew);
     z.el.classList.toggle('onfire', !!st.fire);
     z.el.classList.toggle('broken', !!st.broken);
-    const zl=z.lab.querySelector ? z.lab.querySelector('.zlvl') : null;
-    if(zl) zl.textContent='▲'.repeat(st.level);
     let stat='', barw=0, barc='', fx='';
     if(st.fire){ stat='<span class="red">FIRE — get bodies on it!</span>'; barw=100*st.fire/10; barc='var(--danger)'; fx='🔥'; }
     else if(st.broken){ stat='<span style="color:#c8a030;">broken — needs hands</span>'; barw=100*st.broken/12; barc='#c8a030'; fx='🔩'; }
