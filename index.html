@@ -195,11 +195,14 @@
   <div id="map" class="screen">
     <h2 style="text-align:center;">SYSTEM CHECK — DAY <span id="map-day"></span></h2>
     <div class="progress-dots" id="map-dots"></div>
-    <div class="cols" style="margin-bottom:8px;">
-      <div class="panel" id="crew-sheet" style="flex:1;"></div>
+    <div style="display:flex; gap:16px; align-items:flex-start; flex:1; min-height:0;">
+      <div style="flex:1; min-width:0; overflow-y:auto; padding-right:2px;">
+        <div class="panel" id="crew-sheet" style="margin-bottom:10px;"></div>
+        <p class="sub" style="letter-spacing:.1em; text-align:center;">PLAN THE MORNING — THEN OPEN THE DOORS</p>
+        <div class="doors" id="doors"></div>
+      </div>
+      <div class="panel" id="stockchart-side" style="width:320px; flex-shrink:0; align-self:stretch; overflow-y:auto;"></div>
     </div>
-    <p class="sub" style="letter-spacing:.1em;">PLAN THE MORNING — THEN OPEN THE DOORS</p>
-    <div class="doors" id="doors"></div>
   </div>
 
   <!-- SERVICE -->
@@ -234,14 +237,6 @@
         <div id="lab-results"></div>
       </div>
     </div>
-    <div class="center" style="margin-top:14px;"><button class="big" onclick="gotoMap()">BACK TO THE PASS</button></div>
-  </div>
-
-  <!-- INVENTORY HISTORY -->
-  <div id="stockchart" class="screen">
-    <h2 style="text-align:center;">📈 INVENTORY HISTORY</h2>
-    <p class="sub" style="margin-bottom:12px;">BUY ORDERS · SERVICE USAGE · OVERNIGHT SPOILAGE, BY DAY</p>
-    <div class="panel" id="stockchart-body" style="max-width:900px; margin:0 auto; width:100%;"></div>
     <div class="center" style="margin-top:14px;"><button class="big" onclick="gotoMap()">BACK TO THE PASS</button></div>
   </div>
 
@@ -677,6 +672,7 @@ function gotoMap(){
   }
   renderCrewSheet();
   renderDayPlan();
+  renderStockChart();
   maybeEvent();
 }
 
@@ -812,8 +808,7 @@ function renderCrewSheet(){
         <button onclick="morningBuy('${sid}')" ${G.money<p?'disabled':''} style="font-size:.7rem; padding:1px 6px;">+6 $${p}</button>${
         bought.length?`<button onclick="undoBuy('${sid}')" title="undo the last case, full refund" style="font-size:.7rem; padding:1px 6px;">↩ +$${lastCost}</button>`:''}</span>`;
     }).join('')
-  }</span></div>
-  <div class="center" style="margin-top:6px;"><button onclick="openStockChart()" style="font-size:.72rem;">📈 INVENTORY HISTORY</button></div>`;
+  }</span></div>`;
   if(G.cellar.length){
     h+=`<div class="row"><span>🧊 <b>CELLAR</b></span><span class="muted" style="font-size:.78rem;">${
       G.cellar.map(b=>CELLAR_DEFS[b.type].icon+' '+b.name+(G.day>=b.ready?' — READY ('+b.left+' left)':' — day '+b.ready)).join(' · ')
@@ -958,7 +953,7 @@ function morningBuy(sid){
   G.money-=p; G.stock[sid]+=6;
   G.todayBuys[sid].push({qty:6, cost:p});
   ensureStockDay().bought[sid]+=6;
-  topbar(); renderCrewSheet(); renderDayPlan(); save();
+  topbar(); renderCrewSheet(); renderDayPlan(); renderStockChart(); save();
 }
 // undo the most recent case bought today (either channel) — full refund, LIFO
 function undoBuy(sid){
@@ -968,7 +963,7 @@ function undoBuy(sid){
   G.money+=last.cost;
   G.stock[sid]=Math.max(0,G.stock[sid]-last.qty);
   const d=ensureStockDay(); d.bought[sid]=Math.max(0,d.bought[sid]-last.qty);
-  topbar(); save();
+  topbar(); save(); renderStockChart();
   if(document.getElementById('shop').classList.contains('on')) openShop();
   else { renderCrewSheet(); renderDayPlan(); }
 }
@@ -1702,36 +1697,37 @@ function labGreedy(N, cap, bans, onstep){
   return {plan, est:cur};
 }
 
-function openStockChart(){ show('stockchart'); topbar('inventory history'); renderStockChart(); }
-function renderStockChart(){
-  const el=document.getElementById('stockchart-body');
+// compact ledger chart, rendered in-place on the map's side panel — no navigation
+function renderStockChart(elId){
+  const el=document.getElementById(elId||'stockchart-side');
+  if(!el) return;
   const days=G.stockHistory.filter(Boolean).sort((a,b)=>a.day-b.day);
-  if(!days.length){ el.innerHTML='<p class="muted" style="font-size:.85rem;">No purchases or service yet — the ledger fills in as you buy stock and run nights.</p>'; return; }
-  let h=`<div style="display:flex; gap:16px; align-items:center; font-size:.78rem; margin-bottom:14px; flex-wrap:wrap;">
-    <span><span style="display:inline-block;width:11px;height:11px;background:var(--steel);border-radius:2px;"></span> bought</span>
-    <span><span style="display:inline-block;width:11px;height:11px;background:var(--ok);border-radius:2px;"></span> used in service</span>
-    <span><span style="display:inline-block;width:11px;height:11px;background:var(--danger);border-radius:2px;"></span> spoiled overnight</span>
-    <span class="muted">bar height is relative to that station's own peak day</span></div>`;
+  let h='<h2 style="font-size:.88rem;">📈 INVENTORY</h2>';
+  if(!days.length){ h+='<p class="muted" style="font-size:.78rem;">Buy orders and service usage will chart here once you\'ve stocked up and run a night.</p>'; el.innerHTML=h; return; }
+  h+=`<div style="display:flex; flex-direction:column; gap:2px; font-size:.68rem; margin-bottom:10px;">
+    <span><span style="display:inline-block;width:9px;height:9px;background:var(--steel);border-radius:2px;"></span> bought</span>
+    <span><span style="display:inline-block;width:9px;height:9px;background:var(--ok);border-radius:2px;"></span> used in service</span>
+    <span><span style="display:inline-block;width:9px;height:9px;background:var(--danger);border-radius:2px;"></span> spoiled overnight</span></div>`;
   COOK_STATIONS.forEach(sid=>{
     const def=STATION_DEFS.find(s=>s.id===sid);
     const maxV=Math.max(1,...days.map(d=>Math.max(d.bought[sid],d.used[sid],d.spoiled[sid])));
     const totalBought=days.reduce((a,d)=>a+d.bought[sid],0);
     const totalUsed=days.reduce((a,d)=>a+d.used[sid],0);
     const totalSpoiled=days.reduce((a,d)=>a+d.spoiled[sid],0);
-    h+=`<div style="margin-bottom:18px;">
-      <div class="gold" style="font-size:.85rem; margin-bottom:6px;">${def.icon} ${STOCK_LABEL[sid]}
-        <span class="muted" style="font-size:.72rem;">— ${totalBought} bought · ${totalUsed} used · ${totalSpoiled} spoiled, all-run</span></div>
-      <div style="display:flex; gap:10px; align-items:flex-end; height:100px; border-bottom:1px solid var(--line); overflow-x:auto; padding-bottom:2px;">`;
+    h+=`<div style="margin-bottom:12px;">
+      <div class="gold" style="font-size:.72rem;">${def.icon} ${STOCK_LABEL[sid]}</div>
+      <div class="muted" style="font-size:.63rem; margin-bottom:3px;">${totalBought} bought · ${totalUsed} used · ${totalSpoiled} spoiled</div>
+      <div style="display:flex; gap:5px; align-items:flex-end; height:62px; border-bottom:1px solid var(--line); overflow-x:auto; padding-bottom:2px;">`;
     days.forEach(d=>{
       const b=d.bought[sid], u=d.used[sid], sp=d.spoiled[sid];
-      h+=`<div style="display:flex; flex-direction:column; align-items:center; min-width:38px;"
+      h+=`<div style="display:flex; flex-direction:column; align-items:center; min-width:20px;"
           title="day ${d.day} — bought ${b}, used ${u}, spoiled ${sp}, ended with ${d.end[sid]}">
-        <div style="display:flex; gap:2px; align-items:flex-end; height:82px;">
-          <div style="width:9px; height:${Math.max(1,Math.round(82*b/maxV))}px; background:var(--steel); border-radius:1px;"></div>
-          <div style="width:9px; height:${Math.max(1,Math.round(82*u/maxV))}px; background:var(--ok); border-radius:1px;"></div>
-          <div style="width:9px; height:${Math.max(1,Math.round(82*sp/maxV))}px; background:var(--danger); border-radius:1px;"></div>
+        <div style="display:flex; gap:1px; align-items:flex-end; height:50px;">
+          <div style="width:5px; height:${Math.max(1,Math.round(50*b/maxV))}px; background:var(--steel); border-radius:1px;"></div>
+          <div style="width:5px; height:${Math.max(1,Math.round(50*u/maxV))}px; background:var(--ok); border-radius:1px;"></div>
+          <div style="width:5px; height:${Math.max(1,Math.round(50*sp/maxV))}px; background:var(--danger); border-radius:1px;"></div>
         </div>
-        <div class="muted" style="font-size:.66rem; margin-top:3px;">D${d.day}</div>
+        <div class="muted" style="font-size:.58rem; margin-top:2px;">${d.day}</div>
       </div>`;
     });
     h+='</div></div>';
