@@ -237,6 +237,14 @@
     <div class="center" style="margin-top:14px;"><button class="big" onclick="gotoMap()">BACK TO THE PASS</button></div>
   </div>
 
+  <!-- INVENTORY HISTORY -->
+  <div id="stockchart" class="screen">
+    <h2 style="text-align:center;">📈 INVENTORY HISTORY</h2>
+    <p class="sub" style="margin-bottom:12px;">BUY ORDERS · SERVICE USAGE · OVERNIGHT SPOILAGE, BY DAY</p>
+    <div class="panel" id="stockchart-body" style="max-width:900px; margin:0 auto; width:100%;"></div>
+    <div class="center" style="margin-top:14px;"><button class="big" onclick="gotoMap()">BACK TO THE PASS</button></div>
+  </div>
+
   <!-- END SCREENS -->
   <div id="final" class="screen center">
     <h1 id="final-h">*</h1>
@@ -295,6 +303,13 @@ const SPOIL={stove:0.2, garde:0.3, pastry:0.1, window:0.15}; // nightly rot
 function rollPrices(){
   return Object.fromEntries(Object.entries(STOCK_BASE).map(([k,v])=>
     [k, Math.max(3, Math.round(v*(0.7+Math.random()*0.7)))]));
+}
+// one ledger row per day: units bought, used in service, spoiled overnight, closing stock
+function ensureStockDay(){
+  let d=G.stockHistory.find(x=>x.day===G.day);
+  if(!d){ d={day:G.day, bought:{stove:0,garde:0,pastry:0,window:0}, used:{stove:0,garde:0,pastry:0,window:0},
+    spoiled:{stove:0,garde:0,pastry:0,window:0}, end:{...G.stock}}; G.stockHistory.push(d); }
+  return d;
 }
 
 /* The Cellar: ferment & dry-age inventory. Buy raw product, wait for it to mature,
@@ -419,7 +434,7 @@ function newRun(){
   return {
     day:1, money:35, rep:30, repMax:40, tokens:2, cellar:[],
     stock:{stove:12, garde:12, pastry:10, window:12}, prices:rollPrices(),
-    plan:{},
+    plan:{}, stockHistory:[], todayBuys:{stove:[], garde:[], pastry:[], window:[]},
     crew: ALL_CREW.filter(c=>c.start).map(mkCrew),
     stations: Object.fromEntries(STATION_DEFS.map(s=>[s.id,{level:1}])),
     flags:{}, usedEvents:[], lastType:null, espresso:false, rnd:{}, rndOffers:genRndOffers(),
@@ -498,12 +513,15 @@ function nextDay(){
   // overnight: yesterday's mise is spent, perishables rot, the market moves
   G.plan={};
   const lost=[];
+  const closingDay=ensureStockDay();
   Object.entries(SPOIL).forEach(([sid,rate])=>{
     const l=Math.floor(G.stock[sid]*rate);
-    if(l>0){ G.stock[sid]-=l; lost.push(l+' '+STOCK_LABEL[sid]); }
+    if(l>0){ G.stock[sid]-=l; lost.push(l+' '+STOCK_LABEL[sid]); closingDay.spoiled[sid]+=l; }
   });
+  COOK_STATIONS.forEach(sid=>{ closingDay.end[sid]=G.stock[sid]; });
   if(lost.length) toast('🗑️ Overnight spoilage: '+lost.join(', ')+'.');
   G.prices=rollPrices();
+  G.todayBuys={stove:[], garde:[], pastry:[], window:[]};
   G.day++;
 }
 
@@ -527,6 +545,8 @@ function resumeRun(){
     if(!G.stock) G.stock={stove:12, garde:12, pastry:10, window:12};
     if(!G.prices) G.prices=rollPrices();
     if(!G.plan) G.plan={};
+    if(!G.stockHistory) G.stockHistory=[];
+    if(!G.todayBuys) G.todayBuys={stove:[], garde:[], pastry:[], window:[]};
     G.crew.forEach(c=>{ if(c.stress===undefined){ c.stress=0; c.coolT=0; c.errand=null; c.runT=0; c.runTicket=null; } });
     applyMenuExtras();
     topbar(''); gotoMap();
@@ -786,10 +806,14 @@ function renderCrewSheet(){
     <span style="font-size:.78rem; display:flex; gap:10px; flex-wrap:wrap;">${
     COOK_STATIONS.map(sid=>{
       const n=G.stock[sid], p=G.prices[sid]+2;
+      const bought=G.todayBuys[sid];
+      const lastCost=bought.length?bought[bought.length-1].cost:0;
       return `<span class="${n<=3?'red':'muted'}">${STATION_DEFS.find(s=>s.id===sid).icon} ${STOCK_LABEL[sid]} <b>${n}</b>
-        <button onclick="morningBuy('${sid}')" ${G.money<p?'disabled':''} style="font-size:.7rem; padding:1px 6px;">+6 $${p}</button></span>`;
+        <button onclick="morningBuy('${sid}')" ${G.money<p?'disabled':''} style="font-size:.7rem; padding:1px 6px;">+6 $${p}</button>${
+        bought.length?`<button onclick="undoBuy('${sid}')" title="undo the last case, full refund" style="font-size:.7rem; padding:1px 6px;">↩ +$${lastCost}</button>`:''}</span>`;
     }).join('')
-  }</span></div>`;
+  }</span></div>
+  <div class="center" style="margin-top:6px;"><button onclick="openStockChart()" style="font-size:.72rem;">📈 INVENTORY HISTORY</button></div>`;
   if(G.cellar.length){
     h+=`<div class="row"><span>🧊 <b>CELLAR</b></span><span class="muted" style="font-size:.78rem;">${
       G.cellar.map(b=>CELLAR_DEFS[b.type].icon+' '+b.name+(G.day>=b.ready?' — READY ('+b.left+' left)':' — day '+b.ready)).join(' · ')
@@ -889,8 +913,11 @@ function openShop(){
     const def=STATION_DEFS.find(s=>s.id===sid);
     const p=Math.max(2,Math.round(G.prices[sid]*0.8)), base=STOCK_BASE[sid];
     const mkt = p<base?'<span class="green">▼</span>':(p>base?'<span class="red">▲</span>':'');
-    h+=`<div class="row"><span>${def.icon} ${STOCK_LABEL[sid]} — <b>${G.stock[sid]}</b> on hand</span>
-      <button onclick="buyCase('${sid}')" ${G.money<p?'disabled':''}>+6 units — $${p} ${mkt}</button></div>`;
+    const bought=G.todayBuys[sid];
+    const lastCost=bought.length?bought[bought.length-1].cost:0;
+    h+=`<div class="row"><span>${def.icon} ${STOCK_LABEL[sid]} — <b>${G.stock[sid]}</b> on hand${bought.length?' <span class="muted" style="font-size:.7rem;">('+bought.length*6+' bought today)</span>':''}</span>
+      <span>${bought.length?`<button onclick="undoBuy('${sid}')" title="undo the last case, full refund">↩ undo −6 (+$${lastCost})</button>`:''}
+      <button onclick="buyCase('${sid}')" ${G.money<p?'disabled':''}>+6 units — $${p} ${mkt}</button></span></div>`;
   });
   COOK_STATIONS.concat(['expo','dish']).forEach(sid=>{
     const st=G.stations[sid], def=STATION_DEFS.find(s=>s.id===sid);
@@ -929,12 +956,28 @@ function morningBuy(sid){
   const p=G.prices[sid]+2;
   if(G.money<p) return;
   G.money-=p; G.stock[sid]+=6;
-  topbar(); renderCrewSheet(); save();
+  G.todayBuys[sid].push({qty:6, cost:p});
+  ensureStockDay().bought[sid]+=6;
+  topbar(); renderCrewSheet(); renderDayPlan(); save();
+}
+// undo the most recent case bought today (either channel) — full refund, LIFO
+function undoBuy(sid){
+  const arr=G.todayBuys[sid];
+  if(!arr || !arr.length) return;
+  const last=arr.pop();
+  G.money+=last.cost;
+  G.stock[sid]=Math.max(0,G.stock[sid]-last.qty);
+  const d=ensureStockDay(); d.bought[sid]=Math.max(0,d.bought[sid]-last.qty);
+  topbar(); save();
+  if(document.getElementById('shop').classList.contains('on')) openShop();
+  else { renderCrewSheet(); renderDayPlan(); }
 }
 function buyCase(sid){
   const p=Math.max(2,Math.round(G.prices[sid]*0.8));
   if(G.money<p) return;
   G.money-=p; G.stock[sid]+=6;
+  G.todayBuys[sid].push({qty:6, cost:p});
+  ensureStockDay().bought[sid]+=6;
   topbar(); openShop();
 }
 function buyBatch(type){
@@ -970,6 +1013,7 @@ function startService(michelin){
     workScale: 1.7+day*0.055,
     patScale: (michelin?0.9:1) * (1 - day*0.012),
     hazT: 14+Math.random()*8, nextTid:1, banterT:6,
+    usedStock:{stove:0, garde:0, pastry:0, window:0},
     tickets:[], banned:[], dirty:0, dirtyCap:12,
     completed:0, failed:0, earned:0,
     fireRepAcc:0, time:0,
@@ -1187,7 +1231,7 @@ function update(dt){
       for(const t of S.tickets){ const d=t.dishes.find(workable); if(d){dish=d; break;} }
     }
     if(dish){
-      if(!dish.stocked){ G.stock[c.station]--; dish.stocked=true; }
+      if(!dish.stocked){ G.stock[c.station]--; S.usedStock[c.station]++; dish.stocked=true; }
       dish.prog+=crewRate(c,c.station)*dt;
       G.stations[c.station]._fired=true;
       if(!dish.workers.includes(c.id)) dish.workers.push(c.id);
@@ -1329,6 +1373,7 @@ function endService(){
   Object.values(G.stations).forEach(st=>{ delete st.fire; delete st.fireT; delete st.broken; delete st.spread;
     delete st.flow; delete st.idleT; delete st.abandonT; delete st._fired; });
   G.crew.forEach(c=>{ c.runT=0; c.runTicket=null; c.coolT=0; });
+  { const d=ensureStockDay(); COOK_STATIONS.forEach(sid=>{ d.used[sid]+=S.usedStock[sid]; }); }
   const perfect=S.failed===0;
   if(perfect) repDelta(2);
   if(G.rep<=0) return;
@@ -1655,6 +1700,43 @@ function labGreedy(N, cap, bans, onstep){
     if(e.profit>=cur.profit){ plan=cand; cur=e; }
   }
   return {plan, est:cur};
+}
+
+function openStockChart(){ show('stockchart'); topbar('inventory history'); renderStockChart(); }
+function renderStockChart(){
+  const el=document.getElementById('stockchart-body');
+  const days=G.stockHistory.filter(Boolean).sort((a,b)=>a.day-b.day);
+  if(!days.length){ el.innerHTML='<p class="muted" style="font-size:.85rem;">No purchases or service yet — the ledger fills in as you buy stock and run nights.</p>'; return; }
+  let h=`<div style="display:flex; gap:16px; align-items:center; font-size:.78rem; margin-bottom:14px; flex-wrap:wrap;">
+    <span><span style="display:inline-block;width:11px;height:11px;background:var(--steel);border-radius:2px;"></span> bought</span>
+    <span><span style="display:inline-block;width:11px;height:11px;background:var(--ok);border-radius:2px;"></span> used in service</span>
+    <span><span style="display:inline-block;width:11px;height:11px;background:var(--danger);border-radius:2px;"></span> spoiled overnight</span>
+    <span class="muted">bar height is relative to that station's own peak day</span></div>`;
+  COOK_STATIONS.forEach(sid=>{
+    const def=STATION_DEFS.find(s=>s.id===sid);
+    const maxV=Math.max(1,...days.map(d=>Math.max(d.bought[sid],d.used[sid],d.spoiled[sid])));
+    const totalBought=days.reduce((a,d)=>a+d.bought[sid],0);
+    const totalUsed=days.reduce((a,d)=>a+d.used[sid],0);
+    const totalSpoiled=days.reduce((a,d)=>a+d.spoiled[sid],0);
+    h+=`<div style="margin-bottom:18px;">
+      <div class="gold" style="font-size:.85rem; margin-bottom:6px;">${def.icon} ${STOCK_LABEL[sid]}
+        <span class="muted" style="font-size:.72rem;">— ${totalBought} bought · ${totalUsed} used · ${totalSpoiled} spoiled, all-run</span></div>
+      <div style="display:flex; gap:10px; align-items:flex-end; height:100px; border-bottom:1px solid var(--line); overflow-x:auto; padding-bottom:2px;">`;
+    days.forEach(d=>{
+      const b=d.bought[sid], u=d.used[sid], sp=d.spoiled[sid];
+      h+=`<div style="display:flex; flex-direction:column; align-items:center; min-width:38px;"
+          title="day ${d.day} — bought ${b}, used ${u}, spoiled ${sp}, ended with ${d.end[sid]}">
+        <div style="display:flex; gap:2px; align-items:flex-end; height:82px;">
+          <div style="width:9px; height:${Math.max(1,Math.round(82*b/maxV))}px; background:var(--steel); border-radius:1px;"></div>
+          <div style="width:9px; height:${Math.max(1,Math.round(82*u/maxV))}px; background:var(--ok); border-radius:1px;"></div>
+          <div style="width:9px; height:${Math.max(1,Math.round(82*sp/maxV))}px; background:var(--danger); border-radius:1px;"></div>
+        </div>
+        <div class="muted" style="font-size:.66rem; margin-top:3px;">D${d.day}</div>
+      </div>`;
+    });
+    h+='</div></div>';
+  });
+  el.innerHTML=h;
 }
 
 function openLab(){ show('lab'); topbar('the prep lab'); renderLab(); }
