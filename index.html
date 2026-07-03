@@ -505,8 +505,10 @@ function nextDay(){
     gainXp(c,best,3);
   });
   delete G.flags.catalog;
-  // overnight: yesterday's mise is spent, perishables rot, the market moves
-  G.plan={};
+  // overnight: yesterday's prep plan carries over as-is for ease — trimmed only
+  // if today's crew (fewer hands, someone out) can't cover all of it
+  trimPlanToCap();
+  // perishables rot, the market moves
   const lost=[];
   const closingDay=ensureStockDay();
   Object.entries(SPOIL).forEach(([sid,rate])=>{
@@ -683,6 +685,23 @@ function maybeEvent(){
 }
 
 function prepCap(){ return 2*G.crew.filter(c=>!c.out && !c.errand).length; }
+// if the crew shrinks (out days, errands) below what yesterday's plan needs,
+// shed the least valuable components first — leaves before their bases
+function trimPlanToCap(){
+  const cap=prepCap();
+  const usage=compUsage();
+  const leverage=cid=>(usage[cid]||[]).reduce((a,f)=>a+f.w,0);
+  const dropped=[];
+  let guard=0;
+  while(planHours()>cap && guard++<50){
+    const removable=Object.keys(G.plan).filter(cid=>!Object.keys(G.plan).some(k=>COMPONENTS[k].req===cid));
+    if(!removable.length) break;
+    removable.sort((a,b)=>leverage(a)-leverage(b));
+    dropped.push(COMPONENTS[removable[0]].name);
+    delete G.plan[removable[0]];
+  }
+  if(dropped.length) toast('🔪 Fewer hands this morning — dropped from prep: '+dropped.join(', ')+'.');
+}
 function planToggle(cid){
   const c=COMPONENTS[cid]; if(!c) return;
   if(G.plan[cid]){
@@ -777,7 +796,7 @@ function doErrand(type,c){
         const sd=STATION_DEFS.find(s=>s.id===p.dish[0]);
         const sk=c.skills[p.dish[0]];
         return {label:`${p.name} — $${p.cost} · ${p.days} days (${sd.icon} their skill: ${'●'.repeat(sk)||'○'})`,
-          fn:()=>{ if(G.money<p.cost){ toast('Not enough cash.'); renderDayPlan(); return; } c.errand=type; buyRnd(p.id, c); gotoMap(); }};
+          fn:()=>{ if(G.money<p.cost){ toast('Not enough cash.'); renderDayPlan(); return; } c.errand=type; buyRnd(p.id, c); trimPlanToCap(); gotoMap(); }};
       }).concat([{label:'Never mind.', fn:()=>renderDayPlan()}]));
     return;
   }
@@ -785,6 +804,7 @@ function doErrand(type,c){
   if(type==='supply'){ G.flags.catalog=true; toast('🚚 '+c.name+' takes the van. Catalog\'s open — 20% off stock today.'); }
   else if(type==='drill'){ const best=Object.entries(c.skills).sort((x,y)=>y[1]-x[1])[0][0]; gainXp(c,best,15); toast('🔪 '+c.name+' drills '+stName(best)+' until it\'s muscle memory.'); }
   else if(type==='press'){ const b=(c.trait==='maitred'||c.trait==='calm')?3:2; repDelta(b); toast('📰 '+c.name+' charms a food writer. +'+b+' REP.'); }
+  trimPlanToCap();
   gotoMap();
 }
 
@@ -1555,7 +1575,7 @@ function updateFloor(){
     f.el.classList.toggle('moving', c.moveT>0);
     f.el.classList.toggle('cooling', c.coolT>0);
     f.mood.textContent = c.coolT>0?'🧊' : (c.runT>0?'🍽️' : (c.stress>7?'💢':''));
-    f.sfill.style.width=Math.round(100*c.stress/10)+'%';
+    f.sfill.style.width=Math.min(100,Math.round(100*c.stress/10))+'%';
     f.sfill.style.background=c.stress>7?'var(--danger)':(c.stress>4.5?'var(--accent)':'var(--ok)');
     f.tag.textContent=(i+1)+'·'+c.name;
   });
