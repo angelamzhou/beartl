@@ -818,12 +818,27 @@ function renderCrewSheet(){
   const el=document.getElementById('crew-sheet');
   let h='<h2 style="font-size:1rem;">THE BRIGADE</h2>';
   G.crew.forEach(c=>{
-    const best=Object.entries(c.skills).sort((a,b)=>b[1]-a[1])[0];
-    const sd=STATION_DEFS.find(s=>s.id===best[0]);
     h+=`<div class="row"><span>${c.emoji} <b>${c.name}</b>${c.out?' <span class="red">(out today)</span>':''}${c.errand?' <span class="gold">('+ERRANDS[c.errand].icon+' on a run)</span>':''}</span>
-        <span class="muted" style="font-size:.78rem; max-width:52%;">${c.traitTxt}</span>
-        <span class="dots" title="best: ${sd.name}">${sd.icon} ${'●'.repeat(best[1])}${'○'.repeat(3-best[1])}</span></div>`;
+        <span class="muted" style="font-size:.78rem; max-width:78%;">${c.traitTxt}</span></div>`;
   });
+  // full skillset, every station, checked every morning — a chef's off-station
+  // skill (Richie on dish, say) never showed anywhere before this
+  h+='<div style="margin:8px 0 4px;"><span class="gold" style="font-size:.82rem; letter-spacing:.08em;">SKILLSET</span></div>';
+  h+='<div style="overflow-x:auto;"><table style="border-collapse:collapse; width:100%; font-size:.76rem;">';
+  h+='<tr><td></td>'+STATION_DEFS.map(d=>`<td style="text-align:center; padding:2px 5px;" title="${d.name}">${d.icon}</td>`).join('')+'</tr>';
+  G.crew.forEach(c=>{
+    const bestVal=Math.max(...STATION_DEFS.map(d=>c.skills[d.id]));
+    h+=`<tr><td style="padding:3px 8px 3px 0; white-space:nowrap;">${c.emoji} ${c.name}</td>`
+      +STATION_DEFS.map(d=>{
+        const v=c.skills[d.id];
+        const isBest=v>0 && v===bestVal;
+        const style=isBest?'color:var(--accent);':(v>0?'color:var(--bright);':'color:var(--steel);');
+        return `<td style="text-align:center; padding:3px 5px; border-top:1px solid var(--line);">
+          <span style="${style}" title="${c.name} · ${d.name}: ${v}/3">${'●'.repeat(v)}${'○'.repeat(3-v)}</span></td>`;
+      }).join('')
+      +'</tr>';
+  });
+  h+='</table></div>';
   h+=`<div class="row"><span>📦 <b>WALK-IN</b> <span class="muted" style="font-size:.72rem;">(morning rush delivery: +$2/case over market)</span></span>
     <span style="font-size:.78rem; display:flex; gap:10px; flex-wrap:wrap;">${
     COOK_STATIONS.map(sid=>{
