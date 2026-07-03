@@ -82,7 +82,7 @@
   .zone.broken{border-color:#a08030; filter:saturate(.6);}
   .hazfx{position:absolute; right:6px; bottom:3px; font-size:1.5rem; pointer-events:none; animation:bob .8s ease-in-out infinite;}
   .chef{position:absolute; width:64px; margin-left:-32px; text-align:center; cursor:pointer; z-index:5;
-    transition:left 1.05s ease-in-out, top 1.05s ease-in-out; transform:translateY(-92%);}
+    transition:left .15s linear, top .15s linear; transform:translateY(-92%);}
   .chef .face{font-size:1.65rem; display:block; line-height:1.1; animation:bob 1.7s ease-in-out infinite; position:relative;}
   .chef .mood{position:absolute; top:-10px; right:4px; font-size:.85rem;}
   .chef.moving .face{animation:waddle .4s ease-in-out infinite;}
@@ -1497,7 +1497,15 @@ function updateFloor(){
     slotIdx[sid]++;
     const s=slots[Math.min(si,slots.length-1)];
     const ox=si>=slots.length ? (si-slots.length+1)*4 : 0;
-    f.el.style.left=(s[0]+ox)+'%'; f.el.style.top=s[1]+'%';
+    let tx=s[0]+ox, ty=s[1];
+    // walking is driven purely by game time (moveT/moveDur), so it freezes
+    // in lockstep with pause instead of coasting on a wall-clock CSS transition
+    if(c.moveT>0 && c.moveDur>0 && c.moveFromXY){
+      const frac=1-clamp(c.moveT/c.moveDur,0,1);
+      tx=c.moveFromXY[0]+(tx-c.moveFromXY[0])*frac;
+      ty=c.moveFromXY[1]+(ty-c.moveFromXY[1])*frac;
+    }
+    f.el.style.left=tx+'%'; f.el.style.top=ty+'%';
     f.el.classList.toggle('sel', selCrew===c.id);
     f.el.classList.toggle('moving', c.moveT>0);
     f.el.classList.toggle('cooling', c.coolT>0);
@@ -1796,9 +1804,8 @@ document.getElementById('service').addEventListener('mousedown', e=>{
     if(c && c.station!==stEl.dataset.station && !(c.coolT>0) && !(c.runT>0)){
       const dur=moveDur(c.station, stEl.dataset.station);
       showBubble(c.id, rnd(['Yes, chef.','Heard.','Corner!','Behind!','On it.']));
-      c.station=stEl.dataset.station; c.moveT=dur;
-      const f=FLOOR && FLOOR.chefs[c.id];
-      if(f) f.el.style.transitionDuration=dur+'s';
+      c.moveFromXY=zoneCenter(c.station||stEl.dataset.station);
+      c.station=stEl.dataset.station; c.moveT=dur; c.moveDur=dur;
     }
     selCrew=null; renderService(true);
   }
