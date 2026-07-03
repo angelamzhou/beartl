@@ -411,7 +411,7 @@ const ALL_CREW = [
   {id:'ebra',  name:'Ebraheim',emoji:'🧔',  start:false, trait:'franchise',
     traitTxt:'The Franchise: window dishes he works pay +$2. Window master.',
     skills:{expo:0,stove:1,garde:0,pastry:0,window:3,foh:1,dish:1}},
-  {id:'fak',   name:'Neil Fak',emoji:'🔧',  start:false, trait:'handy',
+  {id:'fak',   name:'Neil Fak',emoji:'🔧',  start:true,  trait:'handy',
     traitTxt:'Can Fix Anything: repairs & extinguishes 2.2× faster.',
     skills:{expo:0,stove:0,garde:0,pastry:0,window:1,foh:1,dish:2}},
   {id:'sugar', name:'Sugar',  emoji:'🤰',   start:false, trait:'calm',
@@ -861,11 +861,6 @@ function renderCrewSheet(){
 
 /* ============================== EVENTS ============================== */
 const EVENTS = [
- {id:'haunt', title:'THE WALK-IN IS HAUNTED', when:()=>!recruited('fak'),
-  body:'Neil Fak swears the walk-in whispered his name. Ted backs him up, which helps nobody. Neil offers to “stake it out overnight — free, well, almost free.”',
-  choices:[
-   {label:'Pay him $10. Worst handyman audition ever. (recruit Neil Fak)', fn:()=>{ if(G.money>=10){G.money-=10; recruit('fak'); toast('🔧 Neil Fak joins the brigade!');} else toast('Not enough cash — Neil shrugs and leaves.'); }},
-   {label:'It\'s the compressor, Neil. Go home.', fn:()=>toast('The compressor agrees, ominously.')}]},
  {id:'lockin', title:'LOCKED IN THE WALK-IN', when:()=>true,
   body:'The walk-in handle finally snaps off — with Carmy inside, mid-inventory, again. You can hear muffled, extremely specific swearing.',
   choices:[
@@ -979,7 +974,7 @@ function openShop(){
     const r=G.rnd[p.id];
     if(r && !r.done) h+=`<div class="row"><span>${p.icon} R&D: ${p.name}</span><span class="muted">in development — ready day ${r.due}</span></div>`;
   });
-  [['ebra',35,'Ebraheim — window master'],['fak',25,'Neil Fak — fixes anything'],['sugar',30,'Sugar — calms the kitchen']].forEach(([id,cost,txt])=>{
+  [['ebra',35,'Ebraheim — window master'],['sugar',30,'Sugar — calms the kitchen']].forEach(([id,cost,txt])=>{
     if(!recruited(id)) h+=`<div class="row"><span>🤝 ${txt}</span><button onclick="buyCrew('${id}',${cost})" ${G.money<cost?'disabled':''}>$${cost}</button></div>`;
   });
   el.innerHTML=h;
