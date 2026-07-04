@@ -76,7 +76,7 @@
   .zone.walkinz{background:linear-gradient(180deg,#243242,#1b2634); border-style:dashed; cursor:default;}
   .zlabel{font-size:.78rem; letter-spacing:.08em; color:var(--steel); font-weight:bold; white-space:nowrap;}
   .zlabel .zlvl{color:var(--accent); float:right; font-size:.7rem;}
-  .zstat{font-size:.74rem; color:var(--steel); margin-top:3px; white-space:nowrap;}
+  .zstat{font-size:.74rem; color:var(--steel); margin-top:3px;}
   .zone.onfire{border-color:var(--danger); animation:flick .5s infinite alternate;}
   .zone.hands{border-color:var(--accent); animation:flick .6s infinite alternate;}
   .zone.broken{border-color:#a08030; filter:saturate(.6);}
@@ -167,7 +167,7 @@
     <div class="stat">DAY <span id="ui-day">1</span>/12</div>
     <div class="stat">REP <div class="barwrap"><div class="barfill" id="ui-repbar"></div></div> <span id="ui-rep"></span></div>
     <div class="stat">💵 $<span id="ui-money">0</span></div>
-    <div class="stat">🚫 86-tokens: <span id="ui-tokens">0</span></div>
+    <div class="stat">🚫 86-tokens: <span id="ui-tokens">0</span> <button id="ui-tokbuy" onclick="buyTokenRep()" title="mid-service emergency: trade 1 REP for an 86-token" style="display:none; font-size:.68rem; padding:0 6px;">+1 (−1 REP)</button></div>
     <div class="stat muted" id="ui-context"></div>
     <button id="ui-snd" onclick="toggleSnd()" title="toggle sound" style="margin-left:auto; padding:3px 10px;">🔊</button>
   </div>
@@ -667,6 +667,16 @@ function topbar(ctx){
   bar.style.width=pct+'%';
   bar.style.background = pct>60?'var(--ok)':(pct>30?'var(--accent)':'var(--danger)');
   if(ctx!==undefined) document.getElementById('ui-context').textContent=ctx;
+  // mid-service emergency valve: trade reputation for an 86-token
+  const tb=document.getElementById('ui-tokbuy');
+  if(tb) tb.style.display=(S && !S.over)?'':'none';
+}
+function buyTokenRep(){
+  if(!S || S.over) return;
+  if(G.rep<=1){ toast('The room has no goodwill left to spend.'); return; }
+  repDelta(-1); G.tokens++;
+  sfx('bell'); topbar();
+  toast('🚫 Traded a point of the room\'s goodwill for an 86-token. Use it well.');
 }
 function repDelta(d){
   G.rep=clamp(G.rep+d,0,G.repMax);
@@ -1029,10 +1039,11 @@ function renderCrewSheet(){
   // FAK'S LIST lives on the morning board, not behind the catalog unlock —
   // ordering parts is a morning decision like ordering protein
   if(G.project){
-    h+=`<div class="row"><span>🔧 <b>FAK'S LIST</b> — ${G.project.name}</span><span class="muted" style="font-size:.78rem;"><b class="gold">${Math.round(100*G.project.prog/G.project.work)}%</b> — Fak works it from the dish pit, between loads, during service</span></div>`;
+    h+=`<div class="row"><span>🔧 <b>FAK'S LIST</b> — ${G.project.name}</span><span class="muted" style="font-size:.78rem;"><b class="gold">${Math.round(100*G.project.prog/G.project.work)}%</b> — send Fak to the station mid-service to work it${
+      (G.project.paid && G.project.prog===0)?` <button onclick="cancelProject()" title="bought by mistake? full refund until anyone works it" style="font-size:.7rem; padding:1px 6px;">↩ return parts (+$${G.project.paid})</button>`:''}</span></div>`;
   } else {
     const opts=COOK_STATIONS.concat(['expo']).filter(sid=>G.stations[sid].level<3);
-    if(opts.length) h+=`<div class="row"><span>🔧 <b>FAK'S LIST</b> <span class="muted" style="font-size:.72rem;">(+30% station speed, permanently — parts now, Fak's pit time during service)</span></span>
+    if(opts.length) h+=`<div class="row"><span>🔧 <b>FAK'S LIST</b> <span class="muted" style="font-size:.72rem;">(+30% station speed, permanently — parts now, then Fak works it AT the station mid-service, trading away his pit time)</span></span>
       <span style="font-size:.78rem; display:flex; gap:10px; flex-wrap:wrap;">${
       opts.map(sid=>`<span class="muted">${STATION_DEFS.find(s=>s.id===sid).icon} Lv${G.stations[sid].level}→${G.stations[sid].level+1}
         <button onclick="buyProject('${sid}')" ${G.money<retrofitCost(sid)?'disabled':''} style="font-size:.7rem; padding:1px 6px;">$${retrofitCost(sid)}</button></span>`).join('')
@@ -1151,9 +1162,10 @@ function openShop(){
   if(!G.espresso) h+=`<div class="row"><span>☕ Espresso machine (+10% kitchen speed, forever)</span><button onclick="buyEspresso()" ${G.money<30?'disabled':''}>$30</button></div>`;
   // FAK'S LIST — capacity is bought with parts AND Fak's hands: paying only
   // starts the job; a handy chef has to work it from the pit during service
-  h+=`<div class="row"><span><b>🔧 FAK'S LIST</b> <span class="muted" style="font-size:.75rem;">(parts now, labor later — a handy chef works the job from the dish pit, between loads, mid-service)</span></span></div>`;
+  h+=`<div class="row"><span><b>🔧 FAK'S LIST</b> <span class="muted" style="font-size:.75rem;">(parts now, labor later — send a handy chef TO the station mid-service; the pit piles up while he wrenches)</span></span></div>`;
   if(G.project){
-    h+=`<div class="row"><span>🔧 ${G.project.name}</span><span class="muted">${Math.round(100*G.project.prog/G.project.work)}% done — needs Fak at the pit</span></div>`;
+    h+=`<div class="row"><span>🔧 ${G.project.name}</span><span class="muted">${Math.round(100*G.project.prog/G.project.work)}% done — send Fak to the station mid-service${
+      (G.project.paid && G.project.prog===0)?` <button onclick="cancelProject()" style="font-size:.7rem; padding:1px 6px;">↩ return parts (+$${G.project.paid})</button>`:''}</span></div>`;
   } else {
     COOK_STATIONS.concat(['expo']).forEach(sid=>{
       const st=G.stations[sid];
@@ -1194,11 +1206,22 @@ function buyProject(sid){
   const cost=retrofitCost(sid);
   if(G.money<cost) return;
   G.money-=cost;
-  G.project={sid, name:stName(sid)+' retrofit', work:55, prog:0};
+  G.project={sid, name:stName(sid)+' retrofit', work:55, prog:0, paid:cost};
   topbar(); save();
   if(document.getElementById('shop').classList.contains('on')) openShop();
   else renderDayPlan();
-  toast('🔧 Parts are in. Fak works the '+stName(sid)+' retrofit from the pit — as long as the pit\'s under control and nothing\'s on fire.');
+  toast('🔧 Parts are in. Send Fak to the '+stName(sid)+' during service to work the retrofit — the pit piles up while he\'s under the hood.');
+}
+// accidental clicks happen — a retrofit no one has worked yet can be
+// returned for a full refund from the morning board
+function cancelProject(){
+  if(!G.project || !G.project.paid || G.project.prog>0) return;
+  G.money+=G.project.paid;
+  toast('↩ '+G.project.name+' returned — $'+G.project.paid+' back in the drawer.');
+  G.project=null;
+  topbar(); save();
+  if(document.getElementById('shop').classList.contains('on')) openShop();
+  else renderDayPlan();
 }
 function morningBuy(sid){
   const p=stockPrice(sid)+2;
@@ -1356,7 +1379,7 @@ function startService(michelin){
   renderService(true);
   sfx('bell');
   toast(michelin?'⭐ “Every second counts. Let\'s go.”':'🔔 “Hands! Corner! Behind!” — service begins');
-  if(G.project) toast('🔧 '+G.project.name+' is on the bench ('+Math.round(100*G.project.prog/G.project.work)+'%) — Fak works it from the pit between loads.');
+  if(G.project) toast('🔧 '+G.project.name+' is waiting ('+Math.round(100*G.project.prog/G.project.work)+'%) — send Fak to the '+stName(G.project.sid)+' to work it. The pit won\'t wash itself.');
 }
 
 /* Real cross-station dishes — built from the same "chefs work autonomously
@@ -1693,18 +1716,19 @@ function update(dt){
     if(c.station==='dish'){
       S.dirty=Math.max(0,S.dirty-crewRate(c,'dish')*0.55*dt);
       gainXp(c,'dish',dt*0.4);
-      // Fak's list: a handy chef between loads chips at the retrofit. Pull
-      // him to a fire and the project AND the pit both stall — that's the
-      // tension the job costs, on top of the parts.
-      if(G.project && c.trait==='handy' && S.dirty<S.dirtyCap*0.75){
-        G.project.prog+=dt;
-        if(G.project.prog>=G.project.work){
-          const st=G.stations[G.project.sid];
-          st.level=Math.min(3,st.level+1);
-          sfx('level');
-          toast('🔧 '+G.project.name+' DONE — '+stName(G.project.sid)+' runs at Lv'+st.level+' now. Fak pats the equipment.');
-          G.project=null;
-        }
+      return;
+    }
+    // Fak's list: a handy chef SENT TO the station being retrofitted works
+    // the job instead of cooking there — and the pit he left piles up.
+    // That's the trade: wrench time is bought with dish-pit time.
+    if(G.project && c.station===G.project.sid && c.trait==='handy'){
+      G.project.prog+=dt;
+      if(G.project.prog>=G.project.work){
+        const st2=G.stations[G.project.sid];
+        st2.level=Math.min(3,st2.level+1);
+        sfx('level');
+        toast('🔧 '+G.project.name+' DONE — '+stName(G.project.sid)+' runs at Lv'+st2.level+' now. Fak pats the equipment.');
+        G.project=null;
       }
       return;
     }
@@ -2096,12 +2120,12 @@ function updateFloor(){
       barw=Math.min(100,100*S.dirty/S.dirtyCap);
       barc=S.dirty>=S.dirtyCap?'var(--danger)':'var(--steel)';
       stat=S.dirty>=S.dirtyCap?'<span class="red">PIT FULL — 60% speed</span>':Math.round(S.dirty)+'/'+S.dirtyCap+' dishes';
-      if(G.project){
-        const handyAt=G.crew.some(c=>c.station==='dish' && c.trait==='handy' && c.moveT<=0 && !c.out && !c.errand && !(c.coolT>0));
-        stat+=(handyAt&&S.dirty<S.dirtyCap*0.75
-          ?' · <span class="gold">🔧 '+G.project.name+' '+Math.round(100*G.project.prog/G.project.work)+'%</span>'
-          :' · 🔧 '+G.project.name+' '+Math.round(100*G.project.prog/G.project.work)+'% <span class="red">(stalled — needs Fak + a pit under control)</span>');
-      }
+    }
+    if(G.project && G.project.sid===def.id){
+      const wrenching=G.crew.some(c=>c.station===def.id && c.trait==='handy' && c.moveT<=0 && !c.out && !c.errand && !(c.coolT>0));
+      stat+=(wrenching
+        ?' · <span class="gold">🔧 retrofit '+Math.round(100*G.project.prog/G.project.work)+'%</span>'
+        :' · 🔧 retrofit '+Math.round(100*G.project.prog/G.project.work)+'% <span class="muted">(send Fak here to work it)</span>');
     }
     else if(def.id==='foh'){
       const n=G.crew.filter(c=>c.station==='foh' && c.moveT<=0 && !c.out && !c.errand && !(c.coolT>0)).length;
@@ -2137,7 +2161,7 @@ function updateFloor(){
     f.el.classList.toggle('moving', c.moveT>0);
     f.el.classList.toggle('cooling', c.coolT>0);
     f.mood.textContent = c.coolT>0?'🧊' : (c.runT>0?'🍽️'
-      : (G.project && c.trait==='handy' && c.station==='dish' && c.moveT<=0 && S.dirty<S.dirtyCap*0.75)?'🔧'
+      : (G.project && c.trait==='handy' && c.station===G.project.sid && c.moveT<=0)?'🔧'
       : (c.stress>7?'💢':''));
     f.sfill.style.width=Math.min(100,Math.round(100*c.stress/10))+'%';
     f.sfill.style.background=c.stress>7?'var(--danger)':(c.stress>4.5?'var(--accent)':'var(--ok)');
@@ -2156,6 +2180,16 @@ function renderService(force){
   // tickets
   const rail=document.getElementById('rail');
   let th=`<div class="muted" style="font-size:.8rem; text-align:center;">TICKETS — ${S.tickets.length} open · ${Math.max(0,S.toSpawn-S.spawned)} still coming</div>`;
+  // a dry station is a death spiral — surface the emergency run somewhere
+  // that can never clip off-screen, not just on the (narrow) zone itself
+  COOK_STATIONS.forEach(sid=>{
+    if(G.stock[sid]>0) return;
+    const inbound=G.crew.some(x=>x.supplyRunTarget===sid);
+    th+=`<div style="background:#3a1518; border:1px solid var(--danger); border-radius:4px; padding:5px 8px; font-size:.78rem;">
+      <span class="red">📦 ${STATION_DEFS.find(s=>s.id===sid).name} IS DRY</span> ${inbound
+        ?'<span class="gold">— 🚚 run inbound…</span>'
+        :`<button onmousedown="event.stopPropagation()" onclick="sendForSuppliesPrompt('${sid}')" style="font-size:.7rem; padding:1px 8px;">🚚 send someone for more</button>`}</div>`;
+  });
   S.tickets.forEach(t=>{
     const allDone=t.dishes.every(dishDone);
     const pct=100*t.pat/t.patMax;
