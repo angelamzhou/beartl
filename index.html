@@ -306,6 +306,9 @@ function rollPrices(){
   return Object.fromEntries(Object.entries(STOCK_BASE).map(([k,v])=>
     [k, Math.max(3, Math.round(v*(0.7+Math.random()*0.7)))]));
 }
+// upgraded menus buy better product: every delivered R&D dish on a station
+// permanently raises what that station's ingredients cost (+25% each)
+function stockPrice(sid){ return Math.round(G.prices[sid]*(1+0.25*((G.menuUp||{})[sid]||0))); }
 // one ledger row per day: units bought, used in service, spoiled overnight, closing stock
 function ensureStockDay(){
   let d=G.stockHistory.find(x=>x.day===G.day);
@@ -339,7 +342,7 @@ const FERMENT_DEFS={
   cure:{cost:16, days:2, valBonus:1, label:'Lacto-Ferment: Citrus Cure'},
   crisp:{cost:20, days:3, valBonus:2, label:'Lacto-Ferment: Chili Crisp'},
   giard:{cost:26, days:5, valBonus:2, label:'Lacto-Ferment: Giardiniera'},
-  braise:{cost:30, days:6, valBonus:3, label:'Dry-Age: The Braise', names:AGE_NAMES},
+  braise:{cost:30, days:4, valBonus:3, label:'Dry-Age: The Braise', names:AGE_NAMES}, // was 6 days — too long to ever pay off in a 12-day run
 };
 
 function genRndOffers(){
@@ -455,6 +458,9 @@ function newRun(){
     lastOrder:{stove:12, garde:12, pastry:10, window:12},
     crew: ALL_CREW.filter(c=>c.start).map(mkCrew),
     stations: Object.fromEntries(STATION_DEFS.map(s=>[s.id,{level:1}])),
+    // Fak's list is never empty — one retrofit is already on the bench when
+    // the run starts (12 days is too short to buy AND work every upgrade)
+    project:{sid:'stove', name:'HOT LINE retrofit', work:55, prog:0},
     flags:{}, usedEvents:[], lastType:null, espresso:false, rnd:{}, rndOffers:genRndOffers(),
   };
 }
@@ -705,6 +711,9 @@ function gotoMap(){
         if(star){ p.dish[1]+=' ★'; p.dish[3]=Math.round(p.dish[3]*1.5); repDelta(1); }
         const [st,name,work,val]=p.dish;
         if(!DISH_POOL[st].some(d=>d[0]===name)) DISH_POOL[st].push([name,work,val]);
+        // the menu moved: the guide notices (stars require it), and so does
+        // the purveyor — better dishes buy better product, permanently
+        G.menuUp=G.menuUp||{}; G.menuUp[st]=(G.menuUp[st]||0)+1;
         sfx('level');
         toast(star ? '🌟 BREAKTHROUGH — '+name+' is transcendent. On the menu, +1 REP.' : p.arrive);
       }
@@ -939,7 +948,7 @@ function sendForSuppliesPrompt(sid){
   if(G.crew.some(c=>c.supplyRunTarget===sid)) return; // already one en route
   const free=G.crew.filter(c=>!c.out && !c.errand && !(c.coolT>0) && !(c.runT>0));
   if(!free.length){ toast('Nobody free to send right now.'); return; }
-  const price=Math.round((G.prices[sid]+2)*1.5);
+  const price=Math.round((stockPrice(sid)+2)*1.5);
   modal('🚚 EMERGENCY RUN — '+STOCK_LABEL[sid].toUpperCase(),
     'Who goes? $'+price+' for a rush case, back in under a minute with +6 '+STOCK_LABEL[sid]+'. They\'re off the line while they\'re gone.',
     free.map(c=>({label:c.emoji+' '+c.name, fn:()=>sendForSupplies(c.id,sid)}))
@@ -947,7 +956,7 @@ function sendForSuppliesPrompt(sid){
 }
 function sendForSupplies(cid,sid){
   const c=crewById(cid);
-  const price=Math.round((G.prices[sid]+2)*1.5);
+  const price=Math.round((stockPrice(sid)+2)*1.5);
   if(!c || G.money<price){ toast('Not enough cash for the run.'); return; }
   G.money-=price;
   c.errand='supply'; c.station=null; c.supplyRunTarget=sid;
@@ -1005,7 +1014,7 @@ function renderCrewSheet(){
   h+=`<div class="row"><span>📦 <b>WALK-IN</b> <span class="muted" style="font-size:.72rem;">(morning rush delivery: +$2/case over market)</span></span>
     <span style="font-size:.78rem; display:flex; gap:10px; flex-wrap:wrap;">${
     COOK_STATIONS.map(sid=>{
-      const n=G.stock[sid], p=G.prices[sid]+2;
+      const n=G.stock[sid], p=stockPrice(sid)+2;
       const bought=G.todayBuys[sid];
       const lastCost=bought.length?bought[bought.length-1].cost:0;
       return `<span class="${n<=3?'red':'muted'}">${STATION_DEFS.find(s=>s.id===sid).icon} ${STOCK_LABEL[sid]} <b>${n}</b>
@@ -1016,6 +1025,18 @@ function renderCrewSheet(){
   if(G.day>1){
     const totalTarget=COOK_STATIONS.reduce((a,sid)=>a+Math.max(0,(G.lastOrder[sid]||0)-G.todayBuys[sid].reduce((x,b)=>x+b.qty,0)),0);
     h+=`<div class="center" style="margin-top:4px;"><button onclick="reorderLikeYesterday()" ${totalTarget<=0?'disabled':''} style="font-size:.72rem;" title="buy up to what you ordered last time, per station">🔁 REORDER LIKE YESTERDAY</button></div>`;
+  }
+  // FAK'S LIST lives on the morning board, not behind the catalog unlock —
+  // ordering parts is a morning decision like ordering protein
+  if(G.project){
+    h+=`<div class="row"><span>🔧 <b>FAK'S LIST</b> — ${G.project.name}</span><span class="muted" style="font-size:.78rem;"><b class="gold">${Math.round(100*G.project.prog/G.project.work)}%</b> — Fak works it from the dish pit, between loads, during service</span></div>`;
+  } else {
+    const opts=COOK_STATIONS.concat(['expo']).filter(sid=>G.stations[sid].level<3);
+    if(opts.length) h+=`<div class="row"><span>🔧 <b>FAK'S LIST</b> <span class="muted" style="font-size:.72rem;">(+30% station speed, permanently — parts now, Fak's pit time during service)</span></span>
+      <span style="font-size:.78rem; display:flex; gap:10px; flex-wrap:wrap;">${
+      opts.map(sid=>`<span class="muted">${STATION_DEFS.find(s=>s.id===sid).icon} Lv${G.stations[sid].level}→${G.stations[sid].level+1}
+        <button onclick="buyProject('${sid}')" ${G.money<retrofitCost(sid)?'disabled':''} style="font-size:.7rem; padding:1px 6px;">$${retrofitCost(sid)}</button></span>`).join('')
+    }</span></div>`;
   }
   if(G.cellar.length){
     h+=`<div class="row"><span>🧊 <b>CELLAR</b></span><span class="muted" style="font-size:.78rem;">${
@@ -1117,7 +1138,7 @@ function openShop(){
   h+=`<div class="row"><span><b>📦 PROVISIONS</b> <span class="muted" style="font-size:.75rem;">every dish fired burns 1 unit · perishables rot overnight · prices move daily</span></span></div>`;
   COOK_STATIONS.forEach(sid=>{
     const def=STATION_DEFS.find(s=>s.id===sid);
-    const p=Math.max(2,Math.round(G.prices[sid]*0.8)), base=STOCK_BASE[sid];
+    const p=Math.max(2,Math.round(stockPrice(sid)*0.8)), base=STOCK_BASE[sid];
     const mkt = p<base?'<span class="green">▼</span>':(p>base?'<span class="red">▲</span>':'');
     const bought=G.todayBuys[sid];
     const lastCost=bought.length?bought[bought.length-1].cost:0;
@@ -1174,11 +1195,13 @@ function buyProject(sid){
   if(G.money<cost) return;
   G.money-=cost;
   G.project={sid, name:stName(sid)+' retrofit', work:55, prog:0};
-  topbar(); save(); openShop();
+  topbar(); save();
+  if(document.getElementById('shop').classList.contains('on')) openShop();
+  else renderDayPlan();
   toast('🔧 Parts are in. Fak works the '+stName(sid)+' retrofit from the pit — as long as the pit\'s under control and nothing\'s on fire.');
 }
 function morningBuy(sid){
-  const p=G.prices[sid]+2;
+  const p=stockPrice(sid)+2;
   if(G.money<p) return;
   G.money-=p; G.stock[sid]+=6;
   G.todayBuys[sid].push({qty:6, cost:p});
@@ -1194,7 +1217,7 @@ function reorderLikeYesterday(){
     const target=G.lastOrder[sid]||0;
     let bought=G.todayBuys[sid].reduce((a,b)=>a+b.qty,0);
     while(bought<target){
-      const p=G.prices[sid]+2;
+      const p=stockPrice(sid)+2;
       if(G.money<p) break;
       G.money-=p; G.stock[sid]+=6;
       G.todayBuys[sid].push({qty:6, cost:p});
@@ -1218,7 +1241,7 @@ function undoBuy(sid){
   else { renderCrewSheet(); renderDayPlan(); }
 }
 function buyCase(sid){
-  const p=Math.max(2,Math.round(G.prices[sid]*0.8));
+  const p=Math.max(2,Math.round(stockPrice(sid)*0.8));
   if(G.money<p) return;
   G.money-=p; G.stock[sid]+=6;
   G.todayBuys[sid].push({qty:6, cost:p});
@@ -1333,6 +1356,7 @@ function startService(michelin){
   renderService(true);
   sfx('bell');
   toast(michelin?'⭐ “Every second counts. Let\'s go.”':'🔔 “Hands! Corner! Behind!” — service begins');
+  if(G.project) toast('🔧 '+G.project.name+' is on the bench ('+Math.round(100*G.project.prog/G.project.work)+'%) — Fak works it from the pit between loads.');
 }
 
 /* Real cross-station dishes — built from the same "chefs work autonomously
@@ -1885,9 +1909,8 @@ function endService(){
   if(G.rep<=0) return;
   if(S.michelin){ finale(); return; }
   const grade= perfect?'A PERFECT SERVICE. +2 REP.':(S.failed<=2?'A solid night. Some tables walked.':'A rough one. The room felt it.');
-  const v=michelinVerdict();
   modal('🔔 SERVICE COMPLETE',
-    `Tickets cleared: ${S.completed}\nTables walked: ${S.failed}${S.comped?`\nTables comped: ${S.comped}`:''}\nEarned: $${S.earned}\n\n${grade}\n\nThe guide's ledger so far: ${Math.round(100*v.runRate)}% of covers walked · ${v.cleanNights}/${v.nights} clean nights · running score ${v.score}/100 (⭐ 50 · ⭐⭐ 80)`,
+    `Tickets cleared: ${S.completed}\nTables walked: ${S.failed}${S.comped?`\nTables comped: ${S.comped}`:''}\nEarned: $${S.earned}\n\n${grade}`,
     [{label:'Wrap the station. Tomorrow it continues. →', fn:()=>{ S=null; nextDay(); gotoMap(); }}]);
 }
 
@@ -1909,7 +1932,13 @@ function michelinVerdict(){
   const score=Math.round(40*(1-Math.min(1,nightRate/0.35))
                        + 25*(1-Math.min(1,runRate/0.30))
                        + 20*cleanFrac + 15*repFrac);
-  return {stars: score>=80?2:(score>=50?1:0), score, nightRate, runRate,
+  // the guide doesn't star a reheated menu, however clean the service —
+  // stars require the food itself to have moved: ⭐ takes one delivered
+  // R&D dish, ⭐⭐ takes two
+  const menuUps=Object.values(G.menuUp||{}).reduce((a,b)=>a+b,0);
+  const rawStars= score>=80?2:(score>=50?1:0);
+  const stars=Math.min(rawStars, menuUps>=2?2:(menuUps>=1?1:0));
+  return {stars, rawStars, menuUps, score, nightRate, runRate,
           cleanNights, nights:log.length, repFrac, covers, walked};
 }
 
@@ -1943,7 +1972,8 @@ function finale(){
   sfx(v.stars?'bell':'bad');
   const ledger=`<p style="margin-top:12px;" class="muted">THE GUIDE'S LEDGER — tonight: ${S.failed} of ${S.completed+S.failed+S.comped} covers walked (${Math.round(100*v.nightRate)}%)
     · the run: ${Math.round(100*v.runRate)}% walked over ${v.nights} services · clean nights: ${v.cleanNights}/${v.nights}
-    · REP ${G.rep}/${G.repMax} → <b>${v.score}/100</b> (⭐ at 50, ⭐⭐ at 80)</p>`;
+    · REP ${G.rep}/${G.repMax} · menu: ${v.menuUps} original dish${v.menuUps===1?'':'es'} → <b>${v.score}/100</b> (⭐ at 50, ⭐⭐ at 80)</p>${
+    v.rawStars>v.stars?`<p style="margin-top:8px;" class="red">The service earned more — but the guide doesn't star a reheated menu. One original R&D dish holds ⭐, two hold ⭐⭐.</p>`:''}`;
   let h,body;
   if(v.stars===2){
     h='⭐⭐'; document.getElementById('final-h').style.color='var(--accent)';
@@ -2068,7 +2098,9 @@ function updateFloor(){
       stat=S.dirty>=S.dirtyCap?'<span class="red">PIT FULL — 60% speed</span>':Math.round(S.dirty)+'/'+S.dirtyCap+' dishes';
       if(G.project){
         const handyAt=G.crew.some(c=>c.station==='dish' && c.trait==='handy' && c.moveT<=0 && !c.out && !c.errand && !(c.coolT>0));
-        stat+=' · 🔧 '+Math.round(100*G.project.prog/G.project.work)+'%'+(handyAt&&S.dirty<S.dirtyCap*0.75?'':' <span class="red">(stalled — needs Fak + a pit under control)</span>');
+        stat+=(handyAt&&S.dirty<S.dirtyCap*0.75
+          ?' · <span class="gold">🔧 '+G.project.name+' '+Math.round(100*G.project.prog/G.project.work)+'%</span>'
+          :' · 🔧 '+G.project.name+' '+Math.round(100*G.project.prog/G.project.work)+'% <span class="red">(stalled — needs Fak + a pit under control)</span>');
       }
     }
     else if(def.id==='foh'){
@@ -2104,7 +2136,9 @@ function updateFloor(){
     f.el.classList.toggle('sel', selCrew===c.id);
     f.el.classList.toggle('moving', c.moveT>0);
     f.el.classList.toggle('cooling', c.coolT>0);
-    f.mood.textContent = c.coolT>0?'🧊' : (c.runT>0?'🍽️' : (c.stress>7?'💢':''));
+    f.mood.textContent = c.coolT>0?'🧊' : (c.runT>0?'🍽️'
+      : (G.project && c.trait==='handy' && c.station==='dish' && c.moveT<=0 && S.dirty<S.dirtyCap*0.75)?'🔧'
+      : (c.stress>7?'💢':''));
     f.sfill.style.width=Math.min(100,Math.round(100*c.stress/10))+'%';
     f.sfill.style.background=c.stress>7?'var(--danger)':(c.stress>4.5?'var(--accent)':'var(--ok)');
     f.tag.textContent=(i+1)+'·'+c.name;
