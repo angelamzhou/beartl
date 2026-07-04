@@ -1294,6 +1294,31 @@ function startService(michelin){
   toast(michelin?'⭐ “Every second counts. Let\'s go.”':'🔔 “Hands! Corner! Behind!” — service begins');
 }
 
+/* Real cross-station dishes — two flavors, both built from the same
+   "chefs work autonomously once assigned" abstraction everything else uses.
+   No item-carrying, no twitch timing; static one-person-per-station play
+   stalls these during any real rush because the second station has to
+   absorb them on top of its own queue.
+
+   HANDOFF (stove→window): a genuine sequential transformation — the braise
+   becomes the sandwich. One dish object, its `.station` mutates in place
+   once stage 1 finishes.
+
+   COMPOSED (stove+garde): the hot and cold elements of one plate are
+   prepped in PARALLEL by two different stations and only meet at expo —
+   how a real kitchen actually plates a seared protein with a cold garnish.
+   Represented as two ordinary same-named dish entries (so 86, ticket
+   completion, and stock consumption all just work unmodified); the UI
+   groups them visually since they share a name. */
+const HANDOFF_DISHES=[
+  {name:'Braised Short Rib Sando', stages:[['stove',8],['window',5]], val:16},
+  {name:'Pastrami-Style Brisket', stages:[['stove',10],['window',6]], val:18},
+];
+const COMPOSED_DISHES=[
+  {name:'Seared Duck, Finished Cold', stoveWork:9, gardeWork:5, val:19},
+  {name:'Composed Beef Plate', stoveWork:7, gardeWork:6, val:17},
+];
+
 function mkTicket(){
   const day=G.day;
   const r=Math.random();
@@ -1301,6 +1326,23 @@ function mkTicket(){
   if(S.michelin && Math.random()<0.4) n=3;
   const dishes=[];
   for(let i=0;i<n;i++){
+    const roll=Math.random();
+    const handoffPool=HANDOFF_DISHES.filter(d=>!S.banned.includes(d.name));
+    const composedPool=COMPOSED_DISHES.filter(d=>!S.banned.includes(d.name));
+    if(roll<0.12 && handoffPool.length){
+      const t=rnd(handoffPool);
+      const stages=t.stages.map(([station,work])=>({station, work:work*S.workScale}));
+      dishes.push({station:stages[0].station, name:t.name, work:stages[0].work, prog:0,
+        val:t.val, workers:[], stages, stage:0});
+      continue;
+    }
+    if(roll<0.24 && composedPool.length){
+      const t=rnd(composedPool);
+      const stoveVal=Math.round(t.val/2);
+      dishes.push({station:'stove', name:t.name, work:t.stoveWork*S.workScale, prog:0, val:t.val-stoveVal, workers:[], paired:true});
+      dishes.push({station:'garde', name:t.name, work:t.gardeWork*S.workScale, prog:0, val:stoveVal, workers:[], paired:true});
+      continue;
+    }
     // early days lean on the window, later lean fine-dining
     const w = Math.random();
     let st;
@@ -1314,8 +1356,8 @@ function mkTicket(){
     rec.forEach(s=>{ if(s.comp && G.plan[s.comp]){ frac+=s.w; if(s.type==='par') parQ++; } });
     dishes.push({station:st, name, work:work*S.workScale*(1-frac), prog:0, val:Math.max(2,val-parQ), workers:[]});
   }
-  const pat=Math.max(14,(17+n*6)*S.patScale);
-  return {id:S.nextTid++, dishes, pat, patMax:pat, plateNeed:2+n, plateProg:0, table:rnd(['Table 2','Table 4','Table 7','Table 9','Bar 1','Bar 3','Chef\'s Counter','Booth 6'])};
+  const pat=Math.max(14,(17+dishes.length*5.5)*S.patScale);
+  return {id:S.nextTid++, dishes, pat, patMax:pat, plateNeed:2+dishes.length, plateProg:0, table:rnd(['Table 2','Table 4','Table 7','Table 9','Bar 1','Bar 3','Chef\'s Counter','Booth 6'])};
 }
 
 function dishDone(d){ return d.x86 || d.prog>=d.work; }
@@ -1381,6 +1423,35 @@ function spawnHazard(){
 // judges he's needed most — a fire first, then the busiest station he can
 // actually cook, falling back to his best skill. Sensible from his side of
 // it, a real disruption to whatever plan the player had for him.
+// he tastes something in progress, anywhere in the kitchen — not confined to
+// his own station. Sometimes he's right and it's genuinely better; sometimes
+// he sends real, in-progress work back to zero for no good reason. That
+// unpredictability (can be a net loss, not just a relocation) is the point.
+function carmyTaste(){
+  const c=crewById('carmy');
+  const candidates=[];
+  S.tickets.forEach(t=>t.dishes.forEach(d=>{ if(!d.x86 && d.prog>0 && d.prog<d.work) candidates.push(d); }));
+  if(!candidates.length) return false;
+  const target=rnd(candidates);
+  const roll=Math.random();
+  if(roll<0.35){
+    target.prog=Math.max(0,target.prog*0.4);
+    const worker=target.workers[0] && crewById(target.workers[0]);
+    if(worker && worker.id!=='carmy') worker.stress=clamp(worker.stress+1.5,0,12);
+    showBubble('carmy', rnd(['Redo it.','This isn\'t it. Again.','Start over — it\'s not right.']));
+    sfx('bad');
+    toast('🧑‍🍳 Carmy sends back the '+target.name+' — most of the progress is gone.');
+  } else if(roll<0.55){
+    target.val+=2;
+    repDelta(1);
+    showBubble('carmy', rnd(['...yes. THAT.','Now we\'re talking.','Exactly like that again.']));
+    sfx('level');
+    toast('🧑‍🍳 Carmy tastes the '+target.name+' — genuinely better. +1 REP.');
+  } else {
+    showBubble('carmy', rnd(['Needs salt.','Fine. Just fine.','Hm.']));
+  }
+  return true;
+}
 function carmyWander(){
   if(G.flags.claire || G.day<2) return; // the instability arc starts with his day-2 disappearance
   const c=crewById('carmy');
@@ -1388,6 +1459,7 @@ function carmyWander(){
   if(c.wanderAt===undefined){ c.wanderAt=S.time+20+Math.random()*10; return; }
   if(S.time<c.wanderAt) return;
   c.wanderAt=S.time+26+Math.random()*14;
+  if(!(c.coolT>0) && !(c.runT>0) && Math.random()<0.5 && carmyTaste()) return;
   const onFire=COOK_STATIONS.find(sid=>G.stations[sid].fire);
   let target=onFire;
   if(!target){
@@ -1527,6 +1599,18 @@ function update(dt){
       gainXp(c,c.station,dt*xr);
     }
   });
+
+  // handoff dishes advance stations once their current stage is done — the
+  // dish itself transitions, no one carries anything
+  S.tickets.forEach(t=>t.dishes.forEach(d=>{
+    if(d.stages && d.stage<d.stages.length-1 && !d.x86 && d.prog>=d.work){
+      d.stage++;
+      const next=d.stages[d.stage];
+      d.station=next.station; d.work=next.work; d.prog=0; d.workers=[]; d.stocked=false;
+      sfx('level');
+      toast('🔁 '+d.name+' moves to '+stName(next.station)+' to finish.');
+    }
+  }));
 
   // HANDS! — plated tickets need a runner (FOH first, expo in a pinch)
   const readyT=S.tickets.filter(t=>t.dishes.every(dishDone) && t.plateProg>=t.plateNeed && !t.runner);
@@ -1678,7 +1762,12 @@ function endService(){
 }
 
 function gameOver(){
-  if(S) S.over=true;
+  if(S){
+    S.over=true;
+    // a rep-zero game-over skips endService() entirely — roll tonight's
+    // consumption into the ledger anyway so inventory history stays honest
+    const d=ensureStockDay(); COOK_STATIONS.forEach(sid=>{ d.used[sid]+=S.usedStock[sid]; });
+  }
   clearSave(); sfx('bad');
   // never let a lingering overlay eat clicks on the end screen
   document.getElementById('modal').classList.remove('on');
@@ -1886,7 +1975,14 @@ function renderService(force){
         const right=d.x86?'<span class="red" style="font-size:.7rem;font-weight:bold;">86’D</span>'
           :(!done && !d.stocked && G.stock[d.station]<=0)?'<span class="red" style="font-size:.7rem;">NO STOCK</span>'
           :`<span class="dishbar"><div style="width:${Math.min(100,100*d.prog/d.work)}%;"></div></span>`;
-        return `<div class="dish ${done?'done':''}"><span>${sdef.icon} ${d.name}</span>
+        let tag='';
+        if(d.stages && d.stage<d.stages.length-1){
+          const nextSt=d.stages[d.stage+1].station;
+          tag=` <span class="muted" style="font-size:.62rem;" title="moves on to ${stName(nextSt)} next">→${STATION_DEFS.find(s=>s.id===nextSt).icon}</span>`;
+        } else if(d.paired){
+          tag=` <span class="muted" style="font-size:.62rem;" title="prepped alongside its other half — both need to finish">🔗</span>`;
+        }
+        return `<div class="dish ${done?'done':''}"><span>${sdef.icon} ${d.name}${tag}</span>
           <span style="display:flex;align-items:center;gap:5px;">${btn}${right}</span></div>`;
       }).join('')}
       ${allDone?(t.plateProg>=t.plateNeed
