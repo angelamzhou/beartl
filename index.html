@@ -445,6 +445,7 @@ function newRun(){
     day:1, money:35, rep:30, repMax:40, tokens:2, cellar:[],
     stock:{stove:12, garde:12, pastry:10, window:12}, prices:rollPrices(),
     plan:{}, stockHistory:[], todayBuys:{stove:[], garde:[], pastry:[], window:[]}, ferments:{}, lastVolMult:1,
+    lastOrder:{stove:12, garde:12, pastry:10, window:12},
     crew: ALL_CREW.filter(c=>c.start).map(mkCrew),
     stations: Object.fromEntries(STATION_DEFS.map(s=>[s.id,{level:1}])),
     flags:{}, usedEvents:[], lastType:null, espresso:false, rnd:{}, rndOffers:genRndOffers(),
@@ -539,6 +540,12 @@ function nextDay(){
   COOK_STATIONS.forEach(sid=>{ closingDay.end[sid]=G.stock[sid]; });
   if(lost.length) toast('🗑️ Overnight spoilage: '+lost.join(', ')+'.');
   G.prices=rollPrices();
+  // remember what was actually ordered today, for tomorrow's "reorder same" default —
+  // a day where nothing was bought doesn't erase the last real order
+  COOK_STATIONS.forEach(sid=>{
+    const units=G.todayBuys[sid].reduce((a,b)=>a+b.qty,0);
+    if(units>0) G.lastOrder[sid]=units;
+  });
   G.todayBuys={stove:[], garde:[], pastry:[], window:[]};
   G.day++;
 }
@@ -578,6 +585,7 @@ function resumeRun(){
     if(!G.todayBuys) G.todayBuys={stove:[], garde:[], pastry:[], window:[]};
     if(!G.ferments) G.ferments={};
     if(!G.lastVolMult) G.lastVolMult=1;
+    if(!G.lastOrder) G.lastOrder={stove:12, garde:12, pastry:10, window:12};
     G.crew.forEach(c=>{ if(c.stress===undefined){ c.stress=0; c.coolT=0; c.errand=null; c.runT=0; c.runTicket=null; } });
     applyMenuExtras();
     topbar(''); gotoMap();
@@ -814,6 +822,23 @@ function planToggle(cid){
   renderDayPlan(); save();
 }
 
+// guardrail: with a lot more to review each morning now, it's easy to just
+// mash through to service without ever looking at the walk-in — only nags
+// when BOTH nothing was ordered today AND stock has actually slipped below
+// what's usually kept on hand (not a blanket daily nag)
+function confirmOpenForService(){
+  const noPurchase=Object.values(G.todayBuys).every(arr=>arr.length===0);
+  const short=COOK_STATIONS.filter(sid=>G.stock[sid]<(G.lastOrder[sid]||0));
+  if(noPurchase && short.length){
+    modal('📦 NO ORDER PLACED TODAY',
+      'You haven\'t touched today\'s inventory, and the walk-in is running below what you usually keep on hand for '+short.map(sid=>STOCK_LABEL[sid]).join(', ')+'. Open anyway, or place an order first?',
+      [{label:'🔁 Reorder like yesterday, then open', fn:()=>{ reorderLikeYesterday(); startService(G.day===12); }},
+       {label:'Open anyway — I\'ll manage.', fn:()=>startService(G.day===12)},
+       {label:'Never mind, let me look.', fn:null}]);
+  } else {
+    startService(G.day===12);
+  }
+}
 function renderDayPlan(){
   const el=document.getElementById('doors'); el.innerHTML='';
   const busy=G.crew.filter(c=>c.errand).length;
@@ -887,7 +912,7 @@ function renderDayPlan(){
   btn.className='big';
   btn.style.margin='16px auto 0'; btn.style.display='block';
   btn.textContent = G.day===12 ? '⭐ MICHELIN NIGHT — YES, CHEF' : '🔔 OPEN FOR SERVICE — DAY '+G.day;
-  btn.onclick=()=>startService(G.day===12);
+  btn.onclick=()=>confirmOpenForService();
   el.appendChild(btn);
 }
 
@@ -981,6 +1006,10 @@ function renderCrewSheet(){
         bought.length?`<button onclick="undoBuy('${sid}')" title="undo the last case, full refund" style="font-size:.7rem; padding:1px 6px;">↩ +$${lastCost}</button>`:''}</span>`;
     }).join('')
   }</span></div>`;
+  if(G.day>1){
+    const totalTarget=COOK_STATIONS.reduce((a,sid)=>a+Math.max(0,(G.lastOrder[sid]||0)-G.todayBuys[sid].reduce((x,b)=>x+b.qty,0)),0);
+    h+=`<div class="center" style="margin-top:4px;"><button onclick="reorderLikeYesterday()" ${totalTarget<=0?'disabled':''} style="font-size:.72rem;" title="buy up to what you ordered last time, per station">🔁 REORDER LIKE YESTERDAY</button></div>`;
+  }
   if(G.cellar.length){
     h+=`<div class="row"><span>🧊 <b>CELLAR</b></span><span class="muted" style="font-size:.78rem;">${
       G.cellar.map(b=>CELLAR_DEFS[b.type].icon+' '+b.name+(G.day>=b.ready?' — READY ('+b.left+' left)':' — day '+b.ready)).join(' · ')
@@ -1114,6 +1143,26 @@ function morningBuy(sid){
   G.todayBuys[sid].push({qty:6, cost:p});
   ensureStockDay().bought[sid]+=6;
   topbar(); renderCrewSheet(); renderDayPlan(); renderStockChart(); save();
+}
+// one-click default: top today's order up to whatever was actually ordered
+// last time, per station — buys in cases at the morning-delivery price,
+// stops early per-station if the cash runs out rather than blocking entirely
+function reorderLikeYesterday(){
+  let spent=0;
+  COOK_STATIONS.forEach(sid=>{
+    const target=G.lastOrder[sid]||0;
+    let bought=G.todayBuys[sid].reduce((a,b)=>a+b.qty,0);
+    while(bought<target){
+      const p=G.prices[sid]+2;
+      if(G.money<p) break;
+      G.money-=p; G.stock[sid]+=6;
+      G.todayBuys[sid].push({qty:6, cost:p});
+      ensureStockDay().bought[sid]+=6;
+      bought+=6; spent+=p;
+    }
+  });
+  topbar(); renderCrewSheet(); renderDayPlan(); renderStockChart(); save();
+  toast(spent>0 ? '🔁 Reordered to match yesterday\'s levels — $'+spent+' spent.' : '🔁 Already at or above yesterday\'s levels.');
 }
 // undo the most recent case bought today (either channel) — full refund, LIFO
 function undoBuy(sid){
