@@ -118,6 +118,13 @@
   .patience>div{height:100%;}
   .b86{font-size:.62rem; padding:0 5px; background:#eee; color:#a33; border:1px solid #a33; border-radius:2px; line-height:1.4;}
   .plated-tag{color:#2a7a3d; font-weight:bold; font-size:.75rem;}
+  .tkt{cursor:pointer;}
+  .tkt.fire{box-shadow:0 0 0 2px var(--accent), 2px 2px 0 #00000066;}
+  .ktag{font-size:.6rem; font-weight:bold; padding:0 4px; border-radius:2px; border:1px solid; margin-left:5px; letter-spacing:.05em;}
+  .ktag.vip{color:#9a6b00; border-color:#b8860b; background:#f6ecd2;}
+  .ktag.reg{color:#777; border-color:#aaa;}
+  .bcomp{font-size:.62rem; padding:0 5px; background:#eef4f8; color:#1a6b8a; border:1px solid #1a6b8a; border-radius:2px; line-height:1.4;}
+  .bcomp:disabled{opacity:.45;}
 
   #roster{display:flex; gap:8px; flex-wrap:wrap; padding:8px; background:var(--panel); border:1px solid var(--line); border-radius:6px;}
   #svc-banner{color:var(--steel); font-size:.82rem; text-align:center;}
@@ -213,7 +220,7 @@
       <div id="rail"></div>
     </div>
     <div id="roster"></div>
-    <div class="keyhint">SPACE pause · 1-8 select chef · click a station to send them (walking takes time) · [86] a dish to pull it off the menu · plated food needs a RUNNER (FOH) · watch the stress bars — pair strugglers with Tina</div>
+    <div class="keyhint">SPACE pause · 1-8 select chef · click a station to send them (walking takes time) · click a TICKET to fire it first · [86] a dish · COMP a dying table (needs FOH) · plated food needs a RUNNER (FOH)</div>
   </div>
 
   <!-- SHOP -->
@@ -1249,7 +1256,7 @@ function startService(michelin){
     hazT: 14+Math.random()*8, nextTid:1, banterT:6,
     usedStock:{stove:0, garde:0, pastry:0, window:0},
     tickets:[], banned:[], dirty:0, dirtyCap:12,
-    completed:0, failed:0, earned:0,
+    completed:0, failed:0, earned:0, comped:0, fireTid:null,
     fireRepAcc:0, time:0,
     speedBuff: G.flags.pep?1.15:1,
   };
@@ -1274,7 +1281,7 @@ function startService(michelin){
   if(ferm) toast('🫙 '+ferm.name+' on every plate. Diners are paying for the funk.');
   if(broth) toast('🍲 '+broth.name+' simmering on the back burner. The hot line hums.');
   delete G.flags.stormNext; delete G.flags.pep;
-  G.crew.forEach(c=>{ c.station=null; c.moveT=0; c.coolT=0; c.runT=0; c.runTicket=null; c.stress=S.speedBuff>1?0:2; delete c.errandBackAt; delete c.wanderAt; });
+  G.crew.forEach(c=>{ c.station=null; c.moveT=0; c.coolT=0; c.runT=0; c.runTicket=null; c.touchT=6+Math.random()*6; c.stress=S.speedBuff>1?0:2; delete c.errandBackAt; delete c.wanderAt; });
   // sensible default assignments — every cook station needs a body, so Richie
   // covers the window until Ebraheim is recruited
   G.crew.forEach(c=>{ if(!c.out && !c.errand) c.station=defaultStationFor(c.id); });
@@ -1339,7 +1346,27 @@ function mkTicket(){
     dishes.push({station:st, name, work:work*S.workScale*(1-frac), prog:0, val:Math.max(2,val-parQ), workers:[]});
   }
   const pat=Math.max(14,(17+dishes.length*5.5)*S.patScale);
-  return {id:S.nextTid++, dishes, pat, patMax:pat, plateNeed:2+dishes.length, plateProg:0, table:rnd(['Table 2','Table 4','Table 7','Table 9','Bar 1','Bar 3','Chef\'s Counter','Booth 6'])};
+  /* Typed stakes — not every table is the same kind of risk. VIPs pay half
+     again more and cost −2 REP if they walk (clear them fast and impressed
+     for +1); regulars tip well but walking them costs no REP at all — the
+     table you can afford to sacrifice. The point is triage: which ticket
+     matters is no longer answerable from station backlog counts alone. */
+  let kind='regular';
+  const kr=Math.random();
+  if(S.michelin){ if(kr<0.25) kind='vip'; }
+  else if(day>=2 && kr<0.12) kind='vip';
+  else if(kr<0.27) kind='regulars';
+  let table;
+  if(kind==='vip'){
+    dishes.forEach(d=>{ d.val=Math.round(d.val*1.5); });
+    table=rnd(['Uncle Jimmy + guests','Table 9 — a food writer','Chef\'s Counter','Booth 6 — somebody\'s somebody']);
+    if(!LAB && !G.flags.hintVip){ G.flags.hintVip=1; toast('🎖 A table that matters just sat down. VIPs pay half again more — walk them and it\'s −2 REP. Impress them fast for +1.'); }
+  } else if(kind==='regulars'){
+    table=rnd(['Bar 1 — regulars','Bar 3 — regulars','Table 2 — the Tuesday guys']);
+  } else {
+    table=rnd(['Table 2','Table 4','Table 7','Table 9','Bar 1','Bar 3','Booth 6']);
+  }
+  return {id:S.nextTid++, dishes, pat, patMax:pat, plateNeed:2+dishes.length, plateProg:0, kind, table};
 }
 
 function dishDone(d){ return d.x86 || d.prog>=d.work; }
@@ -1351,10 +1378,44 @@ function ticketDone(t){
     if(d.station==='pastry' && d.workers.includes('marcus')) val+=3;
     if(d.station==='window' && d.workers.includes('ebra')) val+=2;
   });
+  if(t.kind==='regulars') val+=3; // they tip
+  // a VIP served whole and fast is worth talking about — this is what
+  // calling their fire early (click the ticket) is for
+  if(t.kind==='vip' && !t.dishes.some(d=>d.x86) && t.pat/t.patMax>0.55){
+    repDelta(1); toast('🎖 '+t.table+' impressed. Word gets around. +1 REP.');
+  }
   G.money+=val; S.earned+=val; S.completed++;
   S.dirty=Math.min(S.dirtyCap+8, S.dirty+2);
   sfx('cash');
   topbar();
+}
+
+/* Comp — the controlled loss. Money spent so a dying table leaves happy
+   instead of walking: no REP hit, doesn't count against the night. Needs a
+   live body in FOH (someone has to go to the table), which is the other half
+   of what makes staffing the front a real alternative to a fifth cook. */
+function compCost(t){ return (t.kind==='vip'?10:6)+2*t.dishes.length; }
+function compTicket(tid){
+  const i=S.tickets.findIndex(t=>t.id===tid); if(i<0) return;
+  const t=S.tickets[i];
+  const fohUp=G.crew.some(c=>c.station==='foh' && c.moveT<=0 && !c.out && !c.errand && !(c.coolT>0) && !(c.runT>0));
+  if(!fohUp){ toast('🎩 Nobody out front to smooth it over — comping a table needs someone in FOH.'); return; }
+  const cost=compCost(t);
+  if(G.money<cost){ toast('Can\'t cover the comp tonight.'); return; }
+  G.money-=cost; S.comped++;
+  S.tickets.splice(i,1);
+  if(S.fireTid===t.id) S.fireTid=null;
+  sfx('bell');
+  toast('🥂 '+t.table+' comped — on the house. −$'+cost+', no REP lost.');
+  topbar(); renderService(true);
+}
+// the FIRE call — one ticket the whole line works first (cooks claim its
+// dishes first, expo plates it first, the runner takes it first)
+function ticketOrder(){
+  if(!S.fireTid) return S.tickets;
+  const p=S.tickets.find(t=>t.id===S.fireTid);
+  if(!p){ S.fireTid=null; return S.tickets; }
+  return [p,...S.tickets.filter(t=>t!==p)];
 }
 
 function crewRate(c, sid){
@@ -1512,7 +1573,26 @@ function update(dt){
       fohRelief += 0.1+0.06*c.skills.foh + (c.trait==='maitred'?0.3:0);
     }
   });
-  fohRelief=Math.min(0.6,fohRelief);
+  fohRelief=Math.min(0.5,fohRelief);
+
+  // FOH works tables, not just the room: every so often someone from the
+  // front buys the single most endangered table a few more minutes. Once per
+  // table — charm doesn't reheat twice.
+  G.crew.forEach(c=>{
+    if(c.station!=='foh' || c.moveT>0 || c.out || c.errand || c.coolT>0 || c.runT>0) return;
+    c.touchT=(c.touchT||0)-dt;
+    if(c.touchT>0) return;
+    const cand=S.tickets.filter(t=>!t.touched && t.pat>0 && t.pat/t.patMax<0.4)
+      .sort((a,b)=>a.pat/a.patMax-b.pat/b.patMax)[0];
+    if(!cand) return;
+    c.touchT=12;
+    cand.touched=true;
+    cand.pat=Math.min(cand.patMax, cand.pat+(5+2.5*c.skills.foh)+(c.trait==='maitred'?4:0));
+    gainXp(c,'foh',2);
+    showBubble(c.id, rnd(['On the house. One minute.','We got you. It\'s coming.','Next round\'s on me.']));
+    if(!G.flags.hintTouch){ G.flags.hintTouch=1; toast('🎩 '+c.name+' buys '+cand.table+' a few minutes. FOH doesn\'t just slow the room — it saves the table closest to walking.'); }
+    else toast('🎩 '+c.name+' smooths things over at '+cand.table+'.');
+  });
 
   // station work
   const claimed=new Set();
@@ -1548,7 +1628,7 @@ function update(dt){
     }
     if(c.station==='foh'){ gainXp(c,'foh',dt*0.4); return; }
     if(c.station==='expo'){
-      const t=S.tickets.find(t=>t.dishes.every(dishDone) && t.plateProg<t.plateNeed);
+      const t=ticketOrder().find(t=>t.dishes.every(dishDone) && t.plateProg<t.plateNeed);
       if(t){
         t.plateProg+=crewRate(c,'expo')*dt; gainXp(c,'expo',dt*0.5);
         if(t.plateProg>=t.plateNeed) sfx('level'); // "HANDS, PLEASE!"
@@ -1558,15 +1638,16 @@ function update(dt){
     // cook stations — a dish can only fire if it's already on the stove or there's stock for it
     const workable=d=>d.station===c.station && !d.x86 && d.prog<d.work && (d.stocked || G.stock[c.station]>0);
     let dish=null;
+    const ordered=ticketOrder(); // the FIRE ticket's dishes get claimed first
     outer:
-    for(const t of S.tickets){
+    for(const t of ordered){
       for(let i=0;i<t.dishes.length;i++){
         const d=t.dishes[i];
         if(workable(d) && !claimed.has(t.id+'-'+i)){ dish=d; claimed.add(t.id+'-'+i); break outer; }
       }
     }
     if(!dish){ // stack on first matching even if claimed
-      for(const t of S.tickets){ const d=t.dishes.find(workable); if(d){dish=d; break;} }
+      for(const t of ordered){ const d=t.dishes.find(workable); if(d){dish=d; break;} }
     }
     if(dish){
       if(!dish.stocked){ G.stock[c.station]--; S.usedStock[c.station]++; dish.stocked=true; }
@@ -1597,7 +1678,7 @@ function update(dt){
   }));
 
   // HANDS! — plated tickets need a runner (FOH first, expo in a pinch)
-  const readyT=S.tickets.filter(t=>t.dishes.every(dishDone) && t.plateProg>=t.plateNeed && !t.runner);
+  const readyT=ticketOrder().filter(t=>t.dishes.every(dishDone) && t.plateProg>=t.plateNeed && !t.runner);
   if(readyT.length){
     const runners=G.crew.filter(c=>!c.out && !c.errand && c.moveT<=0 && !(c.coolT>0) && !(c.runT>0) && (c.station==='foh'||c.station==='expo'))
       .sort((a,b)=>(a.station==='foh'?0:1)-(b.station==='foh'?0:1));
@@ -1692,10 +1773,13 @@ function update(dt){
     t.pat-=dt*(1-fohRelief);
     if(t.pat<=0){
       S.tickets.splice(i,1); S.failed++;
-      repDelta(-1);
       sfx('bad');
-      G.crew.forEach(c=>{ if(!c.out && !c.errand && !(c.coolT>0)) c.stress=clamp(c.stress+1.2,0,12); });
-      toast('💢 '+t.table+' walked. −1 REP.');
+      // typed losses — who walked matters as much as that they walked
+      if(t.kind==='vip'){ repDelta(-2); toast('💢 '+t.table+' walked. That story gets repeated. −2 REP.'); }
+      else if(t.kind==='regulars'){ toast('🚪 '+t.table+' walked — regulars, they get it. No REP lost, no tip either.'); }
+      else { repDelta(-1); toast('💢 '+t.table+' walked. −1 REP.'); }
+      const bump=t.kind==='regulars'?0.4:1.2;
+      G.crew.forEach(c=>{ if(!c.out && !c.errand && !(c.coolT>0)) c.stress=clamp(c.stress+bump,0,12); });
       if(G.rep<=0) return;
     }
   }
@@ -1741,7 +1825,7 @@ function endService(){
   if(S.michelin){ finale(); return; }
   const grade= perfect?'A PERFECT SERVICE. +2 REP.':(S.failed<=2?'A solid night. Some tables walked.':'A rough one. The room felt it.');
   modal('🔔 SERVICE COMPLETE',
-    `Tickets cleared: ${S.completed}\nTables walked: ${S.failed}\nEarned: $${S.earned}\n\n${grade}`,
+    `Tickets cleared: ${S.completed}\nTables walked: ${S.failed}${S.comped?`\nTables comped: ${S.comped}`:''}\nEarned: $${S.earned}\n\n${grade}`,
     [{label:'Wrap the station. Tomorrow it continues. →', fn:()=>{ S=null; nextDay(); gotoMap(); }}]);
 }
 
@@ -1951,8 +2035,11 @@ function renderService(force){
     const allDone=t.dishes.every(dishDone);
     const pct=100*t.pat/t.patMax;
     const pc= pct>50?'#5fbf77':(pct>25?'#e0a030':'#e05252');
-    th+=`<div class="tkt">
-      <div class="thead"><span>#${String(t.id).padStart(3,'0')} ${t.table}</span><span>${allDone?'<span class="plated-tag">AT THE PASS</span>':''}</span></div>
+    const firing=S.fireTid===t.id;
+    const ktag= t.kind==='vip'?'<span class="ktag vip" title="pays half again more · −2 REP if they walk · impress them fast for +1">VIP</span>'
+      : t.kind==='regulars'?'<span class="ktag reg" title="tips well · no REP lost if they walk — the table you can afford to lose">REGULARS</span>':'';
+    th+=`<div class="tkt${firing?' fire':''}" data-tkt="${t.id}" title="${firing?'firing first — click to release':'click to FIRE this ticket — the whole line works it first'}">
+      <div class="thead"><span>#${String(t.id).padStart(3,'0')} ${t.table}${ktag}</span><span>${firing?'<span class="gold" style="font-size:.68rem;">🔥 FIRE</span>':''}${allDone?'<span class="plated-tag">AT THE PASS</span>':''}</span></div>
       ${t.dishes.map(d=>{
         const done=dishDone(d); const sdef=STATION_DEFS.find(s=>s.id===d.station);
         const btn=(!done && G.tokens>0)?`<button class="b86" data-d86="${d.name}" title="86 this item — strike it from every ticket, off the menu tonight">86</button>`:'';
@@ -1971,8 +2058,12 @@ function renderService(force){
         ?(t.runner?`<div class="dish"><span>🍽️ ${crewById(t.runner)?crewById(t.runner).name:''} is running it…</span></div>`
                   :`<div class="dish"><span class="red" style="font-weight:bold;">🖐 HANDS! needs a runner (FOH)</span></div>`)
         :`<div class="dish"><span>🖨️ plating at the pass…</span><span class="dishbar"><div style="width:${Math.min(100,100*t.plateProg/t.plateNeed)}%;background:#2a7a3d;"></div></span></div>`):''}
+      ${pct<45?`<div class="dish"><span class="red" style="font-size:.7rem;">getting restless…</span>
+        <button class="bcomp" onmousedown="event.stopPropagation()" onclick="compTicket(${t.id})"
+          title="comp the table — $${compCost(t)}, they leave happy, no REP lost (needs someone in FOH)">COMP $${compCost(t)}</button></div>`:''}
       <div class="patience"><div style="width:${pct}%;background:${pc};"></div></div>
     </div>`;
+    if(pct<45 && !G.flags.hintComp){ G.flags.hintComp=1; toast('🥂 A table on the edge can be COMPED — money instead of REP. Someone has to be in FOH to go say it.'); }
   });
   rail.innerHTML=th;
 
@@ -2259,6 +2350,14 @@ document.getElementById('service').addEventListener('mousedown', e=>{
     S.banned.push(name);
     S.tickets.forEach(t=>t.dishes.forEach(d=>{ if(d.name===name && d.prog<d.work) d.x86=true; }));
     topbar(); toast('🚫 86 the '+name+' — off the menu tonight, struck from every ticket.'); renderService(true);
+    return;
+  }
+  const tk=e.target.closest('[data-tkt]');
+  if(tk && S && !S.over){
+    const id=+tk.dataset.tkt;
+    S.fireTid = S.fireTid===id ? null : id;
+    if(S.fireTid && !G.flags.hintFire){ G.flags.hintFire=1; toast('📌 “FIRE table '+id+'!” — the whole line works this ticket first: cooks, expo, the runner. Click again to release.'); }
+    renderService(true);
     return;
   }
   const stEl=e.target.closest('[data-station]');
