@@ -169,7 +169,8 @@
     <div class="stat">💵 $<span id="ui-money">0</span></div>
     <div class="stat">🚫 86-tokens: <span id="ui-tokens">0</span> <button id="ui-tokbuy" onclick="buyTokenRep()" title="mid-service emergency: trade 1 REP for an 86-token" style="display:none; font-size:.68rem; padding:0 6px;">+1 (−1 REP)</button></div>
     <div class="stat muted" id="ui-context"></div>
-    <button id="ui-snd" onclick="toggleSnd()" title="toggle sound" style="margin-left:auto; padding:3px 10px;">🔊</button>
+    <button id="ui-music" onclick="toggleMusic()" title="toggle soundtrack (CC-BY tracks by Scott Buckley)" style="margin-left:auto; padding:3px 10px;">🎶</button>
+    <button id="ui-snd" onclick="toggleSnd()" title="toggle sound effects" style="padding:3px 10px;">🔊</button>
   </div>
 
   <!-- TITLE -->
@@ -195,6 +196,9 @@
       overnight, prices move daily, and empty shelves mean 86'd items and walkouts. Ferment or dry-age what you can't use yet.</p>
     </div>
     <button class="big" onclick="startRun()">YES, CHEF — BEGIN</button>
+    <p class="muted" style="text-align:center; font-size:.72rem; margin-top:14px;">🎶 Soundtrack: “The Long Dark”, “Phase Shift” &amp; “Emergent” by
+      <a href="https://www.scottbuckley.com.au" target="_blank" style="color:var(--steel);">Scott Buckley</a> — released under
+      <a href="https://creativecommons.org/licenses/by/4.0/" target="_blank" style="color:var(--steel);">CC-BY 4.0</a></p>
     <button class="big" id="btn-continue" style="display:none;" onclick="resumeRun()">CONTINUE — DAY <span id="cont-day"></span></button>
   </div>
 
@@ -643,6 +647,38 @@ function toggleSnd(){
 }
 document.getElementById('ui-snd').textContent = sndOn?'🔊':'🔇';
 
+/* Soundtrack — existing Creative Commons tracks, NOT generated music.
+   All three by Scott Buckley (scottbuckley.com.au), CC-BY 4.0, re-encoded
+   to AAC for weight. Credited on the title screen and in the README.
+   Two moods: 'calm' introspective piano for the morning/map, 'service'
+   for the driving orchestral push of a night on the line. */
+const MUSIC={
+  calm:[['music/TheLongDark.m4a','The Long Dark'],['music/PhaseShift.m4a','Phase Shift']],
+  service:[['music/Emergent.m4a','Emergent']],
+};
+let musicOn = localStorage.getItem('beartl-music')!=='off';
+let musicEl=null, musicMode=null;
+function playMusic(mode){
+  if(LAB || typeof Audio==='undefined') return;
+  if(musicMode===mode && musicEl && !musicEl.paused) return;
+  musicMode=mode;
+  if(!musicOn) return;
+  if(!musicEl){
+    musicEl=new Audio(); musicEl.volume=0.3;
+    musicEl.addEventListener('ended',()=>{ if(musicOn && musicMode){ const m=musicMode; musicMode=null; playMusic(m); } });
+  }
+  const [src]=rnd(MUSIC[mode]);
+  if(!musicEl.src.endsWith(src) || musicEl.paused){ musicEl.src=src; musicEl.play().catch(()=>{}); }
+}
+function toggleMusic(){
+  musicOn=!musicOn;
+  try{ localStorage.setItem('beartl-music', musicOn?'on':'off'); }catch(e){}
+  document.getElementById('ui-music').textContent = musicOn?'🎶':'🚫';
+  if(!musicOn && musicEl) musicEl.pause();
+  else if(musicMode){ const m=musicMode; musicMode=null; playMusic(m); }
+}
+document.getElementById('ui-music').textContent = musicOn?'🎶':'🚫';
+
 /* ============================== SCREENS / UI CORE ============================== */
 function show(id){
   document.querySelectorAll('.screen').forEach(s=>s.classList.remove('on'));
@@ -700,6 +736,7 @@ function startRun(){ G=newRun(); topbar(''); gotoMap(); }
 
 function gotoMap(){
   if(G.rep<=0) return;
+  playMusic('calm');
   // R&D projects come out of the walk-in when they're ready — it's research, results vary
   G.rndOffers.forEach(p=>{
     const r=G.rnd[p.id];
@@ -1371,6 +1408,7 @@ function startService(michelin){
   G.crew.forEach(c=>{ if(!c.out && c.errand) c.errandBackAt=backThreshold; });
   selCrew=null;
   if(LAB) return;
+  playMusic('service');
   show('service');
   topbar(michelin?'⭐ MICHELIN NIGHT — THE STORM IS HERE':'service in progress');
   document.getElementById('svc-banner').textContent =

@@ -26,3 +26,9 @@ or serve it with any static file server.
 - **The Prep Lab** — an in-game explainer and solver for the morning prep problem as a two-stage stochastic program (sample average approximation, common random numbers, budget/ban sensitivity analysis)
 
 This is a personal project, not affiliated with or endorsed by FX, Disney, or the creators of *The Bear*.
+
+## Soundtrack credits
+
+Music is not generated — these are existing Creative Commons works, used with attribution and re-encoded to AAC for web weight:
+
+- **“The Long Dark”**, **“Phase Shift”**, and **“Emergent”** by [Scott Buckley](https://www.scottbuckley.com.au) — released under [CC-BY 4.0](https://creativecommons.org/licenses/by/4.0/)
