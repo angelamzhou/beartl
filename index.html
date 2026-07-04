@@ -471,7 +471,7 @@ function newRun(){
     stations: Object.fromEntries(STATION_DEFS.map(s=>[s.id,{level:1}])),
     // Fak's list is never empty — one retrofit is already on the bench when
     // the run starts (12 days is too short to buy AND work every upgrade)
-    project:{sid:'stove', name:'HOT LINE retrofit', work:55, prog:0},
+    project:{sid:'stove', name:'HOT LINE retrofit', work:85, prog:0},
     flags:{}, usedEvents:[], lastType:null, espresso:false, rnd:{}, rndOffers:genRndOffers(),
   };
 }
@@ -1318,7 +1318,7 @@ function buyProject(sid){
   const cost=retrofitCost(sid);
   if(G.money<cost) return;
   G.money-=cost;
-  G.project={sid, name:stName(sid)+' retrofit', work:55, prog:0, paid:cost};
+  G.project={sid, name:stName(sid)+' retrofit', work:85, prog:0, paid:cost};
   topbar(); save();
   if(document.getElementById('shop').classList.contains('on')) openShop();
   else renderDayPlan();
@@ -2455,30 +2455,39 @@ function renderStockChart(elId){
   const days=G.stockHistory.filter(Boolean).sort((a,b)=>a.day-b.day);
   let h='<h2 style="font-size:.88rem;">📈 INVENTORY</h2>';
   if(!days.length){ h+='<p class="muted" style="font-size:.78rem;">Buy orders and service usage will chart here once you\'ve stocked up and run a night.</p>'; el.innerHTML=h; return; }
-  h+=`<div style="display:flex; flex-direction:column; gap:2px; font-size:.68rem; margin-bottom:10px;">
-    <span><span style="display:inline-block;width:9px;height:9px;background:var(--steel);border-radius:2px;"></span> bought</span>
-    <span><span style="display:inline-block;width:9px;height:9px;background:var(--ok);border-radius:2px;"></span> used in service</span>
-    <span><span style="display:inline-block;width:9px;height:9px;background:var(--danger);border-radius:2px;"></span> spoiled overnight</span></div>`;
+  // USED is the primary read (the user asked to see "absolute levels of
+  // what I used every day" first) — one labeled bar per day, height AND a
+  // printed number, so it's readable without hovering. Bought is a thin
+  // grey cap-line at the day's order size (over it = you understocked
+  // that night; under it = leftover). Spoiled only prints when nonzero —
+  // it's a warning, not a headline metric.
+  h+=`<div style="display:flex; gap:12px; flex-wrap:wrap; font-size:.68rem; margin-bottom:10px;">
+    <span><span style="display:inline-block;width:9px;height:9px;background:var(--ok);border-radius:2px;"></span> used (the number)</span>
+    <span><span style="display:inline-block;width:9px;height:2px;background:var(--steel);"></span> bought that day</span>
+    <span><span style="display:inline-block;width:9px;height:9px;background:var(--danger);border-radius:2px;"></span> spoiled</span></div>`;
   COOK_STATIONS.forEach(sid=>{
     const def=STATION_DEFS.find(s=>s.id===sid);
-    const maxV=Math.max(1,...days.map(d=>Math.max(d.bought[sid],d.used[sid],d.spoiled[sid])));
+    const maxV=Math.max(1,...days.map(d=>Math.max(d.bought[sid],d.used[sid])));
     const totalBought=days.reduce((a,d)=>a+d.bought[sid],0);
     const totalUsed=days.reduce((a,d)=>a+d.used[sid],0);
     const totalSpoiled=days.reduce((a,d)=>a+d.spoiled[sid],0);
-    h+=`<div style="margin-bottom:12px;">
+    const avgUsed=(totalUsed/days.length).toFixed(1);
+    h+=`<div style="margin-bottom:14px;">
       <div class="gold" style="font-size:.72rem;">${def.icon} ${STOCK_LABEL[sid]}</div>
-      <div class="muted" style="font-size:.63rem; margin-bottom:3px;">${totalBought} bought · ${totalUsed} used · ${totalSpoiled} spoiled</div>
-      <div style="display:flex; gap:5px; align-items:flex-end; height:62px; border-bottom:1px solid var(--line); overflow-x:auto; padding-bottom:2px;">`;
+      <div class="muted" style="font-size:.63rem; margin-bottom:3px;">avg <b style="color:var(--bright);">${avgUsed}</b>/night used · ${totalBought} bought · ${totalSpoiled} spoiled over the run</div>
+      <div style="display:flex; gap:7px; align-items:flex-end; height:92px; border-bottom:1px solid var(--line); overflow-x:auto; overflow-y:hidden; padding-bottom:2px;">`;
     days.forEach(d=>{
       const b=d.bought[sid], u=d.used[sid], sp=d.spoiled[sid];
-      h+=`<div style="display:flex; flex-direction:column; align-items:center; min-width:20px;"
-          title="day ${d.day} — bought ${b}, used ${u}, spoiled ${sp}, ended with ${d.end[sid]}">
-        <div style="display:flex; gap:1px; align-items:flex-end; height:50px;">
-          <div style="width:5px; height:${Math.max(1,Math.round(50*b/maxV))}px; background:var(--steel); border-radius:1px;"></div>
-          <div style="width:5px; height:${Math.max(1,Math.round(50*u/maxV))}px; background:var(--ok); border-radius:1px;"></div>
-          <div style="width:5px; height:${Math.max(1,Math.round(50*sp/maxV))}px; background:var(--danger); border-radius:1px;"></div>
+      const barH=Math.max(2,Math.round(50*u/maxV));
+      const capH=Math.min(50,Math.round(50*b/maxV));
+      h+=`<div style="display:flex; flex-direction:column; align-items:center; min-width:24px;"
+          title="day ${d.day} — used ${u}, bought ${b}, spoiled ${sp}, ended with ${d.end[sid]}">
+        <div style="font-size:.8rem; font-weight:bold; line-height:1.3; color:var(--bright);">${u}</div>
+        <div style="position:relative; width:14px; height:50px; display:flex; align-items:flex-end; margin-top:1px;">
+          <div style="position:absolute; left:0; right:0; bottom:${capH}px; height:2px; background:var(--steel);"></div>
+          <div style="width:14px; height:${barH}px; background:var(--ok); border-radius:1px;"></div>
         </div>
-        <div class="muted" style="font-size:.58rem; margin-top:2px;">${d.day}</div>
+        <div class="muted" style="font-size:.6rem; margin-top:2px;">${d.day}${sp>0?' <span class="red" title="'+sp+' spoiled">●</span>':''}</div>
       </div>`;
     });
     h+='</div></div>';
