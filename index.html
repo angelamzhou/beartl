@@ -132,6 +132,11 @@
     border:1px solid var(--accent); border-radius:8px; padding:8px 26px; display:none; text-align:center;
     font-size:1rem; letter-spacing:.2em; color:var(--accent); z-index:50; flex-direction:column; gap:3px; pointer-events:none;}
   #pauseveil.on{display:flex;}
+  #tutcard{position:fixed; left:50%; bottom:22px; transform:translateX(-50%); z-index:95; width:min(560px,92vw);
+    background:var(--panel); border:2px solid var(--accent); border-radius:8px; padding:12px 16px;
+    box-shadow:0 10px 34px #000d; display:none;}
+  #tutcard.on{display:block;}
+  .tut-hl{outline:3px solid var(--accent); outline-offset:2px; box-shadow:0 0 18px #f2a03d77; border-radius:6px;}
   #pauseveil .hint{font-size:.75rem; letter-spacing:.1em; color:var(--steel);}
   #comphover{position:fixed; z-index:80; background:#0e1420e6; border:1px solid var(--accent); border-radius:8px;
     padding:10px 14px; pointer-events:none; display:none; max-width:340px; font-size:.85rem; line-height:1.6;}
@@ -204,7 +209,8 @@
 
   <!-- MAP -->
   <div id="map" class="screen">
-    <h2 style="text-align:center;">SYSTEM CHECK — DAY <span id="map-day"></span></h2>
+    <h2 style="text-align:center;">SYSTEM CHECK — DAY <span id="map-day"></span>
+      <button onclick="startTutorial()" title="replay the walkthrough" style="font-size:.66rem; padding:2px 8px; vertical-align:middle; letter-spacing:0;">❓ how to play</button></h2>
     <div class="progress-dots" id="map-dots"></div>
     <div style="display:flex; gap:16px; align-items:flex-start; flex:1; min-height:0;">
       <div style="flex:1; min-width:0; overflow-y:auto; padding-right:2px;">
@@ -260,6 +266,7 @@
 </div>
 
 <div id="pauseveil"><div>⏸ PAUSED — LOOK AROUND, MOVE YOUR PEOPLE</div><div class="hint">SPACE TO RESUME</div></div>
+<div id="tutcard"></div>
 <div id="comphover"></div>
 <div id="toasts"></div>
 <div id="modal"><div id="modalbox"><h2 id="modal-h"></h2><div class="body" id="modal-b"></div><div class="choices" id="modal-c"></div></div></div>
@@ -679,6 +686,71 @@ function toggleMusic(){
 }
 document.getElementById('ui-music').textContent = musicOn?'🎶':'🚫';
 
+/* ============================== TUTORIAL ==============================
+   A skippable guided Day 1: a tour of the morning dashboard's decisions,
+   then a paused first service that teaches the controls — the two action
+   steps auto-advance when the player actually performs them. */
+const TUT_MAP_STEPS=[
+ {sel:'#crew-sheet', t:'THE BRIGADE', d:'Every day starts on this dashboard. Up top: your crew — the dots are station skill, traits matter, and stress carries over night to night. Tonight you\'ll assign each of them somewhere on the line.'},
+ {sel:'#tut-walkin', t:'DECISION 1 — BUY STOCK', d:'Every dish fired burns one unit at its station. A dry station mid-service means dead tickets and walkouts, so top the walk-in up every morning. Prices move daily, and leftovers rot overnight.'},
+ {sel:'#tut-prep', t:'DECISION 2 — MISE EN PLACE', d:'Prep components before service: one prepped component speeds up EVERY dish that uses it tonight. ⛓ chains need their base, par saves time but costs quality. Hover a chip to see the dishes it feeds — or let the 📊 PREP LAB solve the morning for you.'},
+ {sel:'#tut-errands', t:'DECISION 3 — ERRANDS & R&D', d:'Send up to two chefs out; they miss the first half of service. R&D is the one that matters: the guide will NOT star a reheated menu — one original dish holds ⭐, two hold ⭐⭐ — but upgraded menus buy pricier ingredients forever.'},
+ {sel:'#tut-faklist', t:'DECISION 4 — FAK\'S LIST', d:'Station retrofits: pay for the parts, then send Fak TO that station mid-service to work the job (+30% speed there, permanently). While he\'s wrenching, nobody\'s washing — the pit piles up. One job is already on the bench, free.'},
+ {sel:'#stockchart-side', t:'THE INVENTORY CHART', d:'What you bought, used, and spoiled — per station, per day. When the money doesn\'t add up, the answer is usually in here.'},
+ {sel:'#tut-open', t:'OPEN THE DOORS', d:'That\'s the whole morning: stock, prep, errands, the list. Clear tickets before tables walk and protect the REP — it\'s the run\'s health bar. Click the glowing button when you\'re ready; I\'ll walk you through the controls on the line.'},
+];
+const TUT_SVC_STEPS=[
+ {t:'PAUSED — READ THE ROOM', d:'Service is live but paused (SPACE toggles pause anytime). Left: the kitchen floor. Right: the ticket rail — every ticket is a table, and its bar is their patience. Station zones show stock and dishes left to fire.'},
+ {t:'COMMAND THE LINE', d:'Click a chef (or press 1-8), then click a station to send them — walking takes real time. <b>Try it now:</b> move anyone.', done:()=>TUT && TUT.moved},
+ {t:'CALL A TICKET ON THE FLY', d:'Click any ticket in the rail and the whole line works it first — cooks, expo, the runner. Click it again to release. <b>Try it now.</b>', done:()=>S && S.rushTid},
+ {t:'THE PASS & THE FRONT', d:'Cooked dishes plate at EXPO, then someone from FOH runs them out — no runner and the food dies at the pass. Keep a body in FOH: they slow patience loss, rescue the most desperate table, and COMPING a dying table (money instead of REP) needs someone out front.'},
+ {t:'CONTROLLED LOSSES', d:'You will not save every table. 86 a dish with a token, comp the table that matters, let a REGULARS table walk (no REP lost), protect the VIPs (−2 REP if they walk). Out of tokens? Trade REP for one up top. Un-pause with SPACE. Yes, chef.', next:'YES, CHEF ⭢'},
+];
+let TUT=null;
+function startTutorial(){
+  try{ localStorage.setItem('beartl-tut','1'); }catch(e){}
+  TUT={phase:'map', i:0, moved:false};
+  tutShow();
+}
+function tutClearHl(){
+  if(document.querySelectorAll) document.querySelectorAll('.tut-hl').forEach(el=>el.classList.remove('tut-hl'));
+}
+function tutShow(){
+  const card=document.getElementById('tutcard');
+  const steps=TUT.phase==='map'?TUT_MAP_STEPS:TUT_SVC_STEPS;
+  const s=steps[TUT.i];
+  tutClearHl();
+  if(!s){
+    if(TUT.phase==='map'){ TUT.phase='awaitService'; card.classList.remove('on'); }
+    else tutEnd();
+    return;
+  }
+  if(s.sel && document.querySelector){
+    const t=document.querySelector(s.sel);
+    if(t){ t.classList.add('tut-hl'); if(t.scrollIntoView) t.scrollIntoView({block:'center', behavior:'smooth'}); }
+  }
+  card.innerHTML=`<div style="display:flex; justify-content:space-between; gap:12px;"><b class="gold">${s.t}</b><span class="muted" style="font-size:.72rem;">${TUT.i+1}/${steps.length}</span></div>
+    <p style="font-size:.85rem; margin:6px 0 10px;">${s.d}</p>
+    <div style="display:flex; gap:8px; justify-content:flex-end;">
+      <button onclick="tutSkip()" style="font-size:.72rem;">skip tutorial</button>
+      <button onclick="tutNext()" style="color:var(--accent); border-color:var(--accent);">${s.next||'NEXT →'}</button></div>`;
+  card.classList.add('on');
+}
+function tutNext(){ if(!TUT) return; TUT.i++; tutShow(); }
+function tutSkip(){ tutEnd(); }
+function tutEnd(){
+  tutClearHl();
+  const card=document.getElementById('tutcard'); if(card) card.classList.remove('on');
+  if(TUT && TUT.phase==='svc' && S && !S.over) S.paused=false;
+  TUT=null;
+}
+// action steps auto-advance the moment the player performs them
+function tutCheck(){
+  if(!TUT || TUT.phase!=='svc') return;
+  const s=TUT_SVC_STEPS[TUT.i];
+  if(s && s.done && s.done()) tutNext();
+}
+
 /* ============================== SCREENS / UI CORE ============================== */
 function show(id){
   document.querySelectorAll('.screen').forEach(s=>s.classList.remove('on'));
@@ -737,6 +809,8 @@ function startRun(){ G=newRun(); topbar(''); gotoMap(); }
 function gotoMap(){
   if(G.rep<=0) return;
   playMusic('calm');
+  // first-ever run: walk the player through the dashboard (skippable)
+  if(G.day===1 && !TUT && !LAB && document.body && !localStorage.getItem('beartl-tut')) setTimeout(startTutorial, 400);
   // R&D projects come out of the walk-in when they're ready — it's research, results vary
   G.rndOffers.forEach(p=>{
     const r=G.rnd[p.id];
@@ -910,7 +984,7 @@ function renderDayPlan(){
   let h='';
   const cap=prepCap(), used=planHours();
   const lean = G.day<4 ? 'the window — sandwich-heavy book' : (G.day<8 ? 'a mixed book' : 'the dining room — fine-dining heavy');
-  h+=`<p class="muted" style="font-size:.85rem; margin-bottom:6px;">🔪 PREP BOARD — hours <b class="gold">${used}/${cap}</b> <span style="font-size:.76rem;">(2 per chef in the building — errands cost you hands)</span><br>
+  h+=`<p class="muted" id="tut-prep" style="font-size:.85rem; margin-bottom:6px;">🔪 PREP BOARD — hours <b class="gold">${used}/${cap}</b> <span style="font-size:.76rem;">(2 per chef in the building — errands cost you hands)</span><br>
   <span style="font-size:.76rem;">Prep a component once and <b>every dish that uses it</b> gets faster tonight. ⛓ chains need their base. <span class="gold">Par</span> costs $1 quality per plate. <b>Hover a component to see the dishes it feeds.</b> Tonight leans <b class="gold">${lean}</b>.</span></p>`;
   // the morning timeline — selected components laid end to end against capacity
   const order=Object.keys(COMPONENTS).sort((a,b)=>(COMPONENTS[a].req?1:0)-(COMPONENTS[b].req?1:0));
@@ -961,7 +1035,7 @@ function renderDayPlan(){
   if(G.day===12){
     h+='<p class="red" style="text-align:center; font-size:.85rem; margin-top:8px;">⭐ MICHELIN NIGHT — all hands on deck. No errands. Stock the walk-in DEEP and prep everything.</p>';
   } else {
-    h+=`<p class="muted" style="font-size:.8rem; margin-bottom:6px;">MORNING ERRANDS — send up to 2 chefs (${busy}/2 out). They join late, missing the first part of tonight's service.</p>`;
+    h+=`<p class="muted" id="tut-errands" style="font-size:.8rem; margin-bottom:6px;">MORNING ERRANDS — send up to 2 chefs (${busy}/2 out). They join late, missing the first part of tonight's service.</p>`;
     Object.entries(ERRANDS).forEach(([id,e])=>{
       const who=G.crew.filter(c=>c.errand===id).map(c=>c.emoji+' '+c.name).join(', ');
       h+=`<div class="row"><span>${e.icon} <b>${e.name}</b> <span class="muted" style="font-size:.73rem;">${e.desc}</span></span>
@@ -972,6 +1046,7 @@ function renderDayPlan(){
   wrap.innerHTML=h;
   el.appendChild(wrap);
   const btn=document.createElement('button');
+  btn.id='tut-open';
   btn.className='big';
   btn.style.margin='16px auto 0'; btn.style.display='block';
   btn.textContent = G.day===12 ? '⭐ MICHELIN NIGHT — YES, CHEF' : '🔔 OPEN FOR SERVICE — DAY '+G.day;
@@ -1058,7 +1133,7 @@ function renderCrewSheet(){
       +'</tr>';
   });
   h+='</table></div>';
-  h+=`<div class="row"><span>📦 <b>WALK-IN</b> <span class="muted" style="font-size:.72rem;">(morning rush delivery: +$2/case over market)</span></span>
+  h+=`<div class="row" id="tut-walkin"><span>📦 <b>WALK-IN</b> <span class="muted" style="font-size:.72rem;">(morning rush delivery: +$2/case over market)</span></span>
     <span style="font-size:.78rem; display:flex; gap:10px; flex-wrap:wrap;">${
     COOK_STATIONS.map(sid=>{
       const n=G.stock[sid], p=stockPrice(sid)+2;
@@ -1076,11 +1151,11 @@ function renderCrewSheet(){
   // FAK'S LIST lives on the morning board, not behind the catalog unlock —
   // ordering parts is a morning decision like ordering protein
   if(G.project){
-    h+=`<div class="row"><span>🔧 <b>FAK'S LIST</b> — ${G.project.name}</span><span class="muted" style="font-size:.78rem;"><b class="gold">${Math.round(100*G.project.prog/G.project.work)}%</b> — send Fak to the station mid-service to work it${
+    h+=`<div class="row" id="tut-faklist"><span>🔧 <b>FAK'S LIST</b> — ${G.project.name}</span><span class="muted" style="font-size:.78rem;"><b class="gold">${Math.round(100*G.project.prog/G.project.work)}%</b> — send Fak to the station mid-service to work it${
       (G.project.paid && G.project.prog===0)?` <button onclick="cancelProject()" title="bought by mistake? full refund until anyone works it" style="font-size:.7rem; padding:1px 6px;">↩ return parts (+$${G.project.paid})</button>`:''}</span></div>`;
   } else {
     const opts=COOK_STATIONS.concat(['expo']).filter(sid=>G.stations[sid].level<3);
-    if(opts.length) h+=`<div class="row"><span>🔧 <b>FAK'S LIST</b> <span class="muted" style="font-size:.72rem;">(+30% station speed, permanently — parts now, then Fak works it AT the station mid-service, trading away his pit time)</span></span>
+    if(opts.length) h+=`<div class="row" id="tut-faklist"><span>🔧 <b>FAK'S LIST</b> <span class="muted" style="font-size:.72rem;">(+30% station speed, permanently — parts now, then Fak works it AT the station mid-service, trading away his pit time)</span></span>
       <span style="font-size:.78rem; display:flex; gap:10px; flex-wrap:wrap;">${
       opts.map(sid=>`<span class="muted">${STATION_DEFS.find(s=>s.id===sid).icon} Lv${G.stations[sid].level}→${G.stations[sid].level+1}
         <button onclick="buyProject('${sid}')" ${G.money<retrofitCost(sid)?'disabled':''} style="font-size:.7rem; padding:1px 6px;">$${retrofitCost(sid)}</button></span>`).join('')
@@ -1417,6 +1492,9 @@ function startService(michelin){
   renderService(true);
   sfx('bell');
   toast(michelin?'⭐ “Every second counts. Let\'s go.”':'🔔 “Hands! Corner! Behind!” — service begins');
+  // tutorial: the first service opens paused, with the controls explained.
+  // (any phase — the player may open the doors with the map card still up)
+  if(TUT){ TUT.phase='svc'; TUT.i=0; S.paused=true; tutShow(); }
   if(G.project) toast('🔧 '+G.project.name+' is waiting ('+Math.round(100*G.project.prog/G.project.work)+'%) — send Fak to the '+stName(G.project.sid)+' to work it. The pit won\'t wash itself.');
 }
 
@@ -1765,8 +1843,13 @@ function update(dt){
         const st2=G.stations[G.project.sid];
         st2.level=Math.min(3,st2.level+1);
         sfx('level');
-        toast('🔧 '+G.project.name+' DONE — '+stName(G.project.sid)+' runs at Lv'+st2.level+' now. Fak pats the equipment.');
+        toast('🔧 '+G.project.name+' DONE — '+stName(G.project.sid)+' runs at Lv'+st2.level+' now. '+c.name+' heads back to the pit.');
         G.project=null;
+        // job's done — don't leave him standing at a station he can't cook;
+        // he walks himself back to the dish pit
+        const back=moveDur(c.station,'dish');
+        c.moveFromXY=zoneCenter(c.station);
+        c.station='dish'; c.moveT=back; c.moveDur=back;
       }
       return;
     }
@@ -2555,6 +2638,7 @@ document.getElementById('service').addEventListener('mousedown', e=>{
     S.rushTid = S.rushTid===id ? null : id;
     if(S.rushTid && !G.flags.hintRush){ G.flags.hintRush=1; toast('⚡ “Table '+id+', ON THE FLY!” — the whole line pushes this ticket first: cooks, expo, the runner. Click again to release.'); }
     renderService(true);
+    tutCheck();
     return;
   }
   const stEl=e.target.closest('[data-station]');
@@ -2565,8 +2649,10 @@ document.getElementById('service').addEventListener('mousedown', e=>{
       showBubble(c.id, rnd(['Yes, chef.','Heard.','Corner!','Behind!','On it.']));
       c.moveFromXY=zoneCenter(c.station||stEl.dataset.station);
       c.station=stEl.dataset.station; c.moveT=dur; c.moveDur=dur;
+      if(TUT) TUT.moved=true;
     }
     selCrew=null; renderService(true);
+    tutCheck();
   }
 });
 // hover a prep component → transparent view of the dishes it feeds
