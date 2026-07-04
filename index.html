@@ -1053,21 +1053,29 @@ const EVENTS = [
   choices:[
    {label:'“We need you.” (recruit Sugar — kitchen +10% while she\'s in)', fn:()=>{ recruit('sugar'); toast('🤰 Sugar\'s on shift. Everything is 10% calmer.'); }},
    {label:'“We\'re good. Go rest.” (+2 REP, she quietly does PR anyway)', fn:()=>{ repDelta(2); toast('+2 REP. She “rested” by calling three food writers.'); }}]},
+ // fines scale with the drawer — a $20 slap means nothing to a full-book
+ // restaurant, so the city (and the fixer's rate) size the hit to the take
  {id:'inspect', title:'HEALTH INSPECTOR, UNANNOUNCED', when:()=>true,
   body:'Clipboard. Flashlight. That walk. He\'s heading for the dish pit first, because of course he is.',
   choices:[
-   {label:'Full walkthrough, nothing to hide. (50/50: +3 REP or -$20 fine)', fn:()=>{ if(Math.random()<0.5){repDelta(3); toast('+3 REP. “Cleanest pit on this block.”');} else {G.money=Math.max(0,G.money-20); toast('-$20. A single, fatal, mislabeled deli cup.');} }},
-   {label:'Espresso, biscotti, charm offensive. (-$10, guaranteed pass)', fn:()=>{ G.money=Math.max(0,G.money-10); toast('He passes you. He also takes a cannoli “for evidence.”'); }}]},
+   {label:'Full walkthrough, nothing to hide. (50/50: +3 REP or a fine — a third of the drawer, min $20)', fn:()=>{ if(Math.random()<0.5){repDelta(3); toast('+3 REP. “Cleanest pit on this block.”');} else {const f=Math.max(20,Math.round(G.money*0.33)); G.money=Math.max(0,G.money-f); toast('-$'+f+'. A single, fatal, mislabeled deli cup.');} }},
+   {label:'Espresso, biscotti, charm offensive. (15% of the drawer, min $10 — guaranteed pass)', fn:()=>{ const b=Math.max(10,Math.round(G.money*0.15)); G.money=Math.max(0,G.money-b); toast('-$'+b+'. He passes you. He also takes a cannoli “for evidence.”'); }}]},
  {id:'blogger', title:'THE REVIEWER IS IN', when:()=>true,
   body:'Table 4 photographed the focaccia from six angles and is typing with intent. That\'s either 400k followers or a very hungry accountant.',
   choices:[
    {label:'Comp the table, send the good stuff. (-$15, +4 REP)', fn:()=>{ if(G.money>=15){G.money-=15; repDelta(4); toast('+4 REP. The post says “transcendent.” Twice.');} else toast('Can\'t afford it. The post says “solid.” Once.'); }},
    {label:'Everyone gets the same Bear. (+1 REP)', fn:()=>{ repDelta(1); toast('+1 REP. Respect for the integrity, mostly.'); }}]},
+ // the storm is never optional — it's coming either way. The only choice is
+ // how prepared the building is when it lands.
  {id:'storm', title:'STORM WARNING', when:()=>!G.flags.generator,
-  body:'The radar is one enormous red blob parked over Lake Michigan. The lights already did the flicker. The walk-in did the noise.',
+  body:'The radar is one enormous red blob parked over Lake Michigan, and it lands tomorrow whether you like it or not. The lights already did the flicker. The walk-in did the noise.',
   choices:[
-   {label:'Rent a generator. (-$20, storms can\'t hurt your equipment odds)', fn:()=>{ if(G.money>=20){G.money-=20; G.flags.generator=true; toast('⚡ Generator hums behind the restaurant.');} else toast('No cash. The lights flicker, judgmentally.'); }},
-   {label:'Risk it. (next service: more breakdowns & fires)', fn:()=>{ G.flags.stormNext=true; toast('You feel lucky. The lake does not care.'); }}]},
+   {label:'Rent a generator. (-$20 — the storm still comes, but equipment is protected)', fn:()=>{ G.flags.stormNext=true; if(G.money>=20){G.money-=20; G.flags.generator=true; toast('⚡ Generator hums behind the restaurant. The sky still looks personal.');} else toast('No cash. The lights flicker, judgmentally. Storm service tomorrow.'); }},
+   {label:'Batten down. (next service: more breakdowns & fires)', fn:()=>{ G.flags.stormNext=true; toast('You brace what you can. The lake does not care.'); }}]},
+ {id:'storm2', title:'STORM WARNING', when:()=>!!G.flags.generator,
+  body:'Another red blob off the lake. The generator is fueled and the sandbags are where Fak left them. The night will still be ugly — just less flammable.',
+  choices:[
+   {label:'Ride it out. (storm service tomorrow — the generator softens it)', fn:()=>{ G.flags.stormNext=true; toast('⚡ The generator hums. Storm service tomorrow.'); }}]},
  {id:'chaos', title:'CHAOS MENU', when:()=>!G.flags.chaos,
   body:'Carmy, at 2 AM, invented a dish with 14 components and a smoked element. It is objectively brilliant. It is objectively insane to run.',
   choices:[
@@ -1120,6 +1128,20 @@ function openShop(){
   h+=`<div class="row"><span>📰 Good press (+5 REP)</span><button onclick="buyRep()" ${G.money<18?'disabled':''}>$18</button></div>`;
   h+=`<div class="row"><span>🚫 86-token (strike a dish off the menu mid-service)</span><button onclick="buyToken()" ${G.money<8?'disabled':''}>$8</button></div>`;
   if(!G.espresso) h+=`<div class="row"><span>☕ Espresso machine (+10% kitchen speed, forever)</span><button onclick="buyEspresso()" ${G.money<30?'disabled':''}>$30</button></div>`;
+  // FAK'S LIST — capacity is bought with parts AND Fak's hands: paying only
+  // starts the job; a handy chef has to work it from the pit during service
+  h+=`<div class="row"><span><b>🔧 FAK'S LIST</b> <span class="muted" style="font-size:.75rem;">(parts now, labor later — a handy chef works the job from the dish pit, between loads, mid-service)</span></span></div>`;
+  if(G.project){
+    h+=`<div class="row"><span>🔧 ${G.project.name}</span><span class="muted">${Math.round(100*G.project.prog/G.project.work)}% done — needs Fak at the pit</span></div>`;
+  } else {
+    COOK_STATIONS.concat(['expo']).forEach(sid=>{
+      const st=G.stations[sid];
+      if(st.level>=3) return;
+      const cost=retrofitCost(sid);
+      h+=`<div class="row"><span>🔧 ${stName(sid)} retrofit → Lv${st.level+1} <span class="muted" style="font-size:.75rem;">(+30% speed there, permanently)</span></span>
+        <button onclick="buyProject('${sid}')" ${G.money<cost?'disabled':''}>$${cost}</button></div>`;
+    });
+  }
   h+=`<div class="row"><span><b>🧊 THE CELLAR</b> <span class="muted" style="font-size:.75rem;">(${G.cellar.length}/${CELLAR_CAP} slots · storms without a generator can spoil maturing batches)</span></span></div>`;
   G.cellar.forEach(b=>{
     const def=CELLAR_DEFS[b.type];
@@ -1143,6 +1165,18 @@ function openShop(){
 function buyRep(){ if(G.money>=18){ G.money-=18; repDelta(5); openShop(); } }
 function buyToken(){ if(G.money>=8){ G.money-=8; G.tokens++; topbar(); openShop(); } }
 function buyEspresso(){ if(G.money>=30){ G.money-=30; G.espresso=true; topbar(); openShop(); toast('☕ The machine gleams. Productivity soars.'); } }
+function retrofitCost(sid){ return G.stations[sid].level===1?35:65; }
+function buyProject(sid){
+  if(G.project) return;
+  const st=G.stations[sid];
+  if(st.level>=3) return;
+  const cost=retrofitCost(sid);
+  if(G.money<cost) return;
+  G.money-=cost;
+  G.project={sid, name:stName(sid)+' retrofit', work:55, prog:0};
+  topbar(); save(); openShop();
+  toast('🔧 Parts are in. Fak works the '+stName(sid)+' retrofit from the pit — as long as the pit\'s under control and nothing\'s on fire.');
+}
 function morningBuy(sid){
   const p=G.prices[sid]+2;
   if(G.money<p) return;
@@ -1319,8 +1353,17 @@ const HANDOFF_DISHES=[
 function mkTicket(){
   const day=G.day;
   const r=Math.random();
-  let n = r<Math.max(0.1,0.35-day*0.03)?1 : (r<0.8?2:3);
-  if(S.michelin && Math.random()<0.4) n=3;
+  /* Late-game difficulty comes from ticket COMPLEXITY, not just volume: as
+     the run matures (day) and the fuller book arrives (rep), parties order
+     longer — more stations lit per table, less slack per ticket, more
+     reasons to comp. Still fulfillable: patience and plating both scale
+     with length, same as always. fancy=0 reproduces the early-game mix. */
+  const fancy=Math.min(1, 0.6*Math.max(0,(day-5)/7) + 0.6*Math.max(0,(G.rep-30)/((G.repMax||40)-30)));
+  let n;
+  if(r<Math.max(0.08,0.35-day*0.03)) n=1;
+  else if(r<0.8-0.3*fancy) n=2;
+  else n=(Math.random()<0.4*fancy)?4:3;
+  if(S.michelin && Math.random()<0.4) n=Math.max(n,3);
   const dishes=[];
   for(let i=0;i<n;i++){
     const roll=Math.random();
@@ -1394,7 +1437,7 @@ function ticketDone(t){
    instead of walking: no REP hit, doesn't count against the night. Needs a
    live body in FOH (someone has to go to the table), which is the other half
    of what makes staffing the front a real alternative to a fifth cook. */
-function compCost(t){ return (t.kind==='vip'?10:6)+2*t.dishes.length; }
+function compCost(t){ return (t.kind==='vip'?7:3)+t.dishes.length; }
 function compTicket(tid){
   const i=S.tickets.findIndex(t=>t.id===tid); if(i<0) return;
   const t=S.tickets[i];
@@ -1626,6 +1669,19 @@ function update(dt){
     if(c.station==='dish'){
       S.dirty=Math.max(0,S.dirty-crewRate(c,'dish')*0.55*dt);
       gainXp(c,'dish',dt*0.4);
+      // Fak's list: a handy chef between loads chips at the retrofit. Pull
+      // him to a fire and the project AND the pit both stall — that's the
+      // tension the job costs, on top of the parts.
+      if(G.project && c.trait==='handy' && S.dirty<S.dirtyCap*0.75){
+        G.project.prog+=dt;
+        if(G.project.prog>=G.project.work){
+          const st=G.stations[G.project.sid];
+          st.level=Math.min(3,st.level+1);
+          sfx('level');
+          toast('🔧 '+G.project.name+' DONE — '+stName(G.project.sid)+' runs at Lv'+st.level+' now. Fak pats the equipment.');
+          G.project=null;
+        }
+      }
       return;
     }
     if(c.station==='foh'){ gainXp(c,'foh',dt*0.4); return; }
@@ -1821,14 +1877,40 @@ function endService(){
     c.errand=null; delete c.errandBackAt;
   });
   { const d=ensureStockDay(); COOK_STATIONS.forEach(sid=>{ d.used[sid]+=S.usedStock[sid]; }); }
+  // the guide's ledger — every night goes on the record (comped tables
+  // count as covers served, not as walkouts: that's what the comp buys)
+  (G.svcLog=G.svcLog||[]).push({day:G.day, covers:S.completed+S.failed+S.comped, walked:S.failed, comped:S.comped});
   const perfect=S.failed===0;
   if(perfect) repDelta(2);
   if(G.rep<=0) return;
   if(S.michelin){ finale(); return; }
   const grade= perfect?'A PERFECT SERVICE. +2 REP.':(S.failed<=2?'A solid night. Some tables walked.':'A rough one. The room felt it.');
+  const v=michelinVerdict();
   modal('🔔 SERVICE COMPLETE',
-    `Tickets cleared: ${S.completed}\nTables walked: ${S.failed}${S.comped?`\nTables comped: ${S.comped}`:''}\nEarned: $${S.earned}\n\n${grade}`,
+    `Tickets cleared: ${S.completed}\nTables walked: ${S.failed}${S.comped?`\nTables comped: ${S.comped}`:''}\nEarned: $${S.earned}\n\n${grade}\n\nThe guide's ledger so far: ${Math.round(100*v.runRate)}% of covers walked · ${v.cleanNights}/${v.nights} clean nights · running score ${v.score}/100 (⭐ 50 · ⭐⭐ 80)`,
     [{label:'Wrap the station. Tomorrow it continues. →', fn:()=>{ S=null; nextDay(); gotoMap(); }}]);
+}
+
+/* THE GUIDE'S LEDGER — stars come from the whole run, not one lucky (or
+   unlucky) count of walkouts on the final night. Every term is a RATE
+   (walked/covers), so the fuller book that high REP brings never counts
+   against you; consistency across all services and the reputation you
+   built both carry real weight. The finale is still the biggest single
+   night, but it can no longer win — or lose — the stars alone. */
+function michelinVerdict(){
+  const log=G.svcLog||[];
+  const covers=log.reduce((a,n)=>a+n.covers,0), walked=log.reduce((a,n)=>a+n.walked,0);
+  const last=log[log.length-1]||{covers:0,walked:0};
+  const nightRate= last.covers? last.walked/last.covers : 1;   // the finale (or latest night)
+  const runRate= covers? walked/covers : 1;                    // % of all covers walked, volume-normalized
+  const cleanNights=log.filter(n=>n.covers && n.walked/n.covers<=0.15).length;
+  const cleanFrac= log.length? cleanNights/log.length : 0;     // consistency
+  const repFrac=clamp(G.rep/G.repMax,0,1);                     // the reputation you finished with
+  const score=Math.round(40*(1-Math.min(1,nightRate/0.35))
+                       + 25*(1-Math.min(1,runRate/0.30))
+                       + 20*cleanFrac + 15*repFrac);
+  return {stars: score>=80?2:(score>=50?1:0), score, nightRate, runRate,
+          cleanNights, nights:log.length, repFrac, covers, walked};
 }
 
 function gameOver(){
@@ -1857,32 +1939,35 @@ function finale(){
   document.getElementById('modal').classList.remove('on');
   document.getElementById('pauseveil').classList.remove('on');
   show('final');
-  sfx(S.failed<=6?'bell':'bad');
-  const f=S.failed;
+  const v=michelinVerdict();
+  sfx(v.stars?'bell':'bad');
+  const ledger=`<p style="margin-top:12px;" class="muted">THE GUIDE'S LEDGER — tonight: ${S.failed} of ${S.completed+S.failed+S.comped} covers walked (${Math.round(100*v.nightRate)}%)
+    · the run: ${Math.round(100*v.runRate)}% walked over ${v.nights} services · clean nights: ${v.cleanNights}/${v.nights}
+    · REP ${G.rep}/${G.repMax} → <b>${v.score}/100</b> (⭐ at 50, ⭐⭐ at 80)</p>`;
   let h,body;
-  if(f<=3){
+  if(v.stars===2){
     h='⭐⭐'; document.getElementById('final-h').style.color='var(--accent)';
     body=`<p>The storm breaks around midnight. The last plate goes out clean. And then the phone call:
-    the inspector wasn't even there tonight — <b>he came months ago</b>. It was already done.</p>
+    the inspector wasn't even there tonight — <b>he came months ago</b>. He came all season. It was already done.</p>
     <p style="margin-top:12px;" class="gold"><b>TWO MICHELIN STARS.</b></p>
     <p style="margin-top:12px;">Carmy looks at Sydney and says the only thing left to say: <b>“You got two.”</b>
     He hangs up his apron — the restaurant is hers now. Marcus gets the recipe books.
     Ebraheim gets his franchise. Richie boards a flight to Japan with Jessica.
     And somewhere, Cicero actually smiles.</p>
-    <p style="margin-top:12px;" class="muted">Tickets cleared: ${S.completed} · Tables walked: ${f} · Final REP: ${G.rep}/${G.repMax} · $${G.money}</p>
+    ${ledger}
     <p style="margin-top:12px;" class="gold">EVERY SECOND COUNTED. YES, CHEF.</p>`;
-  } else if(f<=6){
+  } else if(v.stars===1){
     h='⭐'; document.getElementById('final-h').style.color='var(--accent)';
-    body=`<p>Not the perfect night you wanted — the storm took its bites. But the food was honest and the room felt it.</p>
+    body=`<p>Not the perfect season you wanted — the storm took its bites. But the food was honest, night after night, and the room felt it.</p>
     <p style="margin-top:12px;" class="gold"><b>ONE MICHELIN STAR.</b></p>
     <p style="margin-top:12px;">Sydney takes the pass full-time. Carmy steps back. The Bear survives — scarred, starred, still standing.</p>
-    <p style="margin-top:12px;" class="muted">Tickets cleared: ${S.completed} · Tables walked: ${f} · Final REP: ${G.rep}/${G.repMax}</p>`;
+    ${ledger}`;
   } else {
     h='—'; document.getElementById('final-h').style.color='var(--steel)';
-    body=`<p>The storm won. Too many tables walked, and the guide stays silent this year.</p>
+    body=`<p>The storm won. Too many tables walked, too many rough nights on the record, and the guide stays silent this year.</p>
     <p style="margin-top:12px;">But the doors are still open. Tina runs the line now. There's always next year, and in this kitchen
     that has to be enough.</p>
-    <p style="margin-top:12px;" class="muted">Tickets cleared: ${S.completed} · Tables walked: ${f} · Final REP: ${G.rep}/${G.repMax}</p>`;
+    ${ledger}`;
   }
   document.getElementById('final-h').textContent=h;
   document.getElementById('final-body').innerHTML=body;
@@ -1962,7 +2047,7 @@ function updateFloor(){
     else if(COOK_STATIONS.includes(def.id)){
       const q=S.tickets.reduce((a,t)=>a+t.dishes.filter(d=>d.station===def.id && !d.x86 && d.prog<d.work).length,0);
       const n=G.stock[def.id];
-      stat=(n<=0?'<span class="red">📦 OUT OF STOCK</span>':'📦 '+n)+' · '+q+' to fire';
+      stat=(st.level>1?'<span class="gold">Lv'+st.level+'</span> · ':'')+(n<=0?'<span class="red">📦 OUT OF STOCK</span>':'📦 '+n)+' · '+q+' to fire';
       if((st.flow||0)>0.12) stat+=' · <span class="gold">'+'»'.repeat(1+Math.round(2*st.flow))+'</span>';
       if(n<=0){
         const someoneOnRun=G.crew.some(x=>x.supplyRunTarget===def.id);
@@ -1974,13 +2059,17 @@ function updateFloor(){
     else if(def.id==='expo'){
       const hands=S.tickets.filter(t=>t.dishes.every(dishDone) && t.plateProg>=t.plateNeed).length;
       const plating=S.tickets.filter(t=>t.dishes.every(dishDone) && t.plateProg<t.plateNeed).length;
-      stat=plating+' plating'+(hands?' · <span class="red">🖐 HANDS! ×'+hands+' — dying at the pass</span>':'');
+      stat=(st.level>1?'<span class="gold">Lv'+st.level+'</span> · ':'')+plating+' plating'+(hands?' · <span class="red">🖐 HANDS! ×'+hands+' — dying at the pass</span>':'');
       z.el.classList.toggle('hands', hands>0);
     }
     else if(def.id==='dish'){
       barw=Math.min(100,100*S.dirty/S.dirtyCap);
       barc=S.dirty>=S.dirtyCap?'var(--danger)':'var(--steel)';
       stat=S.dirty>=S.dirtyCap?'<span class="red">PIT FULL — 60% speed</span>':Math.round(S.dirty)+'/'+S.dirtyCap+' dishes';
+      if(G.project){
+        const handyAt=G.crew.some(c=>c.station==='dish' && c.trait==='handy' && c.moveT<=0 && !c.out && !c.errand && !(c.coolT>0));
+        stat+=' · 🔧 '+Math.round(100*G.project.prog/G.project.work)+'%'+(handyAt&&S.dirty<S.dirtyCap*0.75?'':' <span class="red">(stalled — needs Fak + a pit under control)</span>');
+      }
     }
     else if(def.id==='foh'){
       const n=G.crew.filter(c=>c.station==='foh' && c.moveT<=0 && !c.out && !c.errand && !(c.coolT>0)).length;
