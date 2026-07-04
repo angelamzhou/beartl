@@ -1294,29 +1294,19 @@ function startService(michelin){
   toast(michelin?'⭐ “Every second counts. Let\'s go.”':'🔔 “Hands! Corner! Behind!” — service begins');
 }
 
-/* Real cross-station dishes — two flavors, both built from the same
-   "chefs work autonomously once assigned" abstraction everything else uses.
-   No item-carrying, no twitch timing; static one-person-per-station play
-   stalls these during any real rush because the second station has to
-   absorb them on top of its own queue.
-
-   HANDOFF (stove→window): a genuine sequential transformation — the braise
-   becomes the sandwich. One dish object, its `.station` mutates in place
-   once stage 1 finishes.
-
-   COMPOSED (stove+garde): the hot and cold elements of one plate are
-   prepped in PARALLEL by two different stations and only meet at expo —
-   how a real kitchen actually plates a seared protein with a cold garnish.
-   Represented as two ordinary same-named dish entries (so 86, ticket
-   completion, and stock consumption all just work unmodified); the UI
-   groups them visually since they share a name. */
+/* Real cross-station dishes — built from the same "chefs work autonomously
+   once assigned" abstraction everything else uses. No item-carrying, no
+   twitch timing. HANDOFF (stove→window): a genuine sequential
+   transformation — the braise becomes the sandwich. One dish object, its
+   `.station` mutates in place once stage 1 finishes, and it becomes
+   workable at station 2 the same way any dish there would be — a real
+   temporal bottleneck if window isn't covered when it lands.
+   (A parallel stove+garde "composed" variant was tried and cut — it was
+   just two ordinary same-named dishes on one ticket, which already
+   happens on any multi-dish ticket; no new dependency, pure cosmetics.) */
 const HANDOFF_DISHES=[
   {name:'Braised Short Rib Sando', stages:[['stove',8],['window',5]], val:16},
   {name:'Pastrami-Style Brisket', stages:[['stove',10],['window',6]], val:18},
-];
-const COMPOSED_DISHES=[
-  {name:'Seared Duck, Finished Cold', stoveWork:9, gardeWork:5, val:19},
-  {name:'Composed Beef Plate', stoveWork:7, gardeWork:6, val:17},
 ];
 
 function mkTicket(){
@@ -1328,19 +1318,11 @@ function mkTicket(){
   for(let i=0;i<n;i++){
     const roll=Math.random();
     const handoffPool=HANDOFF_DISHES.filter(d=>!S.banned.includes(d.name));
-    const composedPool=COMPOSED_DISHES.filter(d=>!S.banned.includes(d.name));
     if(roll<0.12 && handoffPool.length){
       const t=rnd(handoffPool);
       const stages=t.stages.map(([station,work])=>({station, work:work*S.workScale}));
       dishes.push({station:stages[0].station, name:t.name, work:stages[0].work, prog:0,
         val:t.val, workers:[], stages, stage:0});
-      continue;
-    }
-    if(roll<0.24 && composedPool.length){
-      const t=rnd(composedPool);
-      const stoveVal=Math.round(t.val/2);
-      dishes.push({station:'stove', name:t.name, work:t.stoveWork*S.workScale, prog:0, val:t.val-stoveVal, workers:[], paired:true});
-      dishes.push({station:'garde', name:t.name, work:t.gardeWork*S.workScale, prog:0, val:stoveVal, workers:[], paired:true});
       continue;
     }
     // early days lean on the window, later lean fine-dining
@@ -1430,7 +1412,9 @@ function spawnHazard(){
 function carmyTaste(){
   const c=crewById('carmy');
   const candidates=[];
-  S.tickets.forEach(t=>t.dishes.forEach(d=>{ if(!d.x86 && d.prog>0 && d.prog<d.work) candidates.push(d); }));
+  // a breakthrough (★) dish is already dialed in through real R&D — he's
+  // done second-guessing it, so it's exempt entirely, not just less likely
+  S.tickets.forEach(t=>t.dishes.forEach(d=>{ if(!d.x86 && d.prog>0 && d.prog<d.work && !d.name.endsWith(' ★')) candidates.push(d); }));
   if(!candidates.length) return false;
   const target=rnd(candidates);
   const roll=Math.random();
@@ -1979,8 +1963,6 @@ function renderService(force){
         if(d.stages && d.stage<d.stages.length-1){
           const nextSt=d.stages[d.stage+1].station;
           tag=` <span class="muted" style="font-size:.62rem;" title="moves on to ${stName(nextSt)} next">→${STATION_DEFS.find(s=>s.id===nextSt).icon}</span>`;
-        } else if(d.paired){
-          tag=` <span class="muted" style="font-size:.62rem;" title="prepped alongside its other half — both need to finish">🔗</span>`;
         }
         return `<div class="dish ${done?'done':''}"><span>${sdef.icon} ${d.name}${tag}</span>
           <span style="display:flex;align-items:center;gap:5px;">${btn}${right}</span></div>`;
