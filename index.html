@@ -409,7 +409,7 @@ function compUsage(){ // which dishes each component feeds tonight
 
 const ALL_CREW = [
   {id:'carmy', name:'Carmy',  emoji:'🧑‍🍳', start:true,  trait:'perfection',
-    traitTxt:'Perfectionist: +30% work speed, but stress builds 50% faster — unless he answers Claire.',
+    traitTxt:'Perfectionist: +30% work speed, stress builds 50% faster, chases his own fires and stresses out whoever\'s next to him — until he answers Claire.',
     skills:{expo:2,stove:3,garde:2,pastry:1,window:1,foh:0,dish:1}},
   {id:'sydney',name:'Sydney', emoji:'👩‍🍳', start:true,  trait:'natural',
     traitTxt:'Natural: earns skill XP twice as fast.',
@@ -730,6 +730,8 @@ function gotoMap(){
   renderCrewSheet();
   renderDayPlan();
   renderStockChart();
+  carmyObsessionCheck();
+  forceClaireIfNeeded();
   maybeEvent();
 }
 
@@ -737,6 +739,46 @@ function maybeEvent(){
   if(G.day<=1 || G.day>=12 || G.flags['evt'+G.day]) return;
   G.flags['evt'+G.day]=true;
   if(Math.random()<0.45) runEvent();
+}
+
+const CARMY_OBSESSION_LINES=[
+  'No note. Just an open notebook on the pass and a half-finished idea.',
+  'He was gone before service prep even started. Nobody saw him leave.',
+  'A single word on the whiteboard: the dish name, underlined three times.',
+];
+// S4-Carmy: chasing his own obsessions, unreliable until he answers Claire.
+// Guaranteed day 2 (kicks off the arc — also forces R&D, which pays off late),
+// then a recurring chance he self-assigns instead of waiting to be asked.
+function carmyObsessionCheck(){
+  if(G.flags.claire || G.day<2 || G.day>=12) return;
+  const carmy=crewById('carmy');
+  if(!carmy || carmy.out || carmy.errand) return;
+  const guaranteed=G.day===2;
+  if(!guaranteed && Math.random()>=0.15) return;
+  const open=G.rndOffers.filter(p=>!G.rnd[p.id]);
+  if(!open.length) return;
+  const best=Object.entries(carmy.skills).sort((a,b)=>b[1]-a[1])[0][0];
+  const pick=open.find(p=>p.dish[0]===best)||rnd(open);
+  carmy.errand='research';
+  // free — this is his own initiative, not a purchase, so no cash-on-hand check
+  G.rnd[pick.id]={due:G.day+pick.days, done:false, skill:carmy.skills[pick.dish[0]]};
+  G.flags['evt'+G.day]=true; // don't also roll a random event on top of this
+  modal(guaranteed?'🧑‍🍳 CARMY\'S GONE':'🧑‍🍳 CARMY\'S GONE AGAIN',
+    (guaranteed
+      ? 'He didn\'t ask. Left a note: chasing "'+pick.name+'." Back on the line eventually — probably.'
+      : rnd(CARMY_OBSESSION_LINES)+' He\'s chasing "'+pick.name+'" now.')
+    +'\n\nHe\'ll surface when it\'s done. Tonight, work around it.',
+    [{label:'Of course he is.', fn:()=>{ renderDayPlan(); renderCrewSheet(); }}]);
+}
+// the S5 turn: Claire only becomes reachable late, and if the player hasn't
+// gotten there on their own by the day before Michelin Night, it's forced —
+// the arc has to resolve before the last service, not randomly mid-run
+function forceClaireIfNeeded(){
+  if(G.flags.claire || G.day!==11 || G.flags['evt'+G.day]) return;
+  const ev=EVENTS.find(e=>e.id==='claire');
+  G.usedEvents.push(ev.id);
+  G.flags['evt'+G.day]=true;
+  modal(ev.title, ev.body, ev.choices.map(c=>({label:c.label, fn:()=>{ c.fn(); topbar(); save(); renderDayPlan(); renderCrewSheet(); }})));
 }
 
 function prepCap(){ return 2*G.crew.filter(c=>!c.out && !c.errand).length; }
@@ -960,7 +1002,7 @@ const EVENTS = [
   choices:[
    {label:'Buy him out of panicking. (-$30)', fn:()=>{ if(G.money>=30){G.money-=30; toast('Jimmy pockets it: “This means nothing. But thank you.”');} else { repDelta(-3); toast('You can\'t pay. -3 REP as word gets around.'); } }},
    {label:'Promise him the star. (-3 REP if you\'re bluffing — you\'re bluffing)', fn:()=>{ repDelta(-3); toast('-3 REP. Jimmy: “You said that last year. VERBATIM.”'); }}]},
- {id:'claire', title:'A MISSED CALL', when:()=>!G.flags.claire,
+ {id:'claire', title:'A MISSED CALL', when:()=>!G.flags.claire && G.day>=8,
   body:'Carmy\'s phone buzzes on the pass. Claire. He looks at it a beat too long.',
   choices:[
    {label:'“Take five, chef.” (Carmy\'s stress stops building faster, permanently)', fn:()=>{ G.flags.claire=true; toast('🧑‍🍳 He steps out for two minutes. Comes back quieter.'); }},
@@ -1183,7 +1225,7 @@ function startService(michelin){
   if(ferm) toast('🫙 '+ferm.name+' on every plate. Diners are paying for the funk.');
   if(broth) toast('🍲 '+broth.name+' simmering on the back burner. The hot line hums.');
   delete G.flags.stormNext; delete G.flags.pep;
-  G.crew.forEach(c=>{ c.station=null; c.moveT=0; c.coolT=0; c.runT=0; c.runTicket=null; c.stress=S.speedBuff>1?0:2; delete c.errandBackAt; });
+  G.crew.forEach(c=>{ c.station=null; c.moveT=0; c.coolT=0; c.runT=0; c.runTicket=null; c.stress=S.speedBuff>1?0:2; delete c.errandBackAt; delete c.wanderAt; });
   // sensible default assignments — every cook station needs a body, so Richie
   // covers the window until Ebraheim is recruited
   G.crew.forEach(c=>{ if(!c.out && !c.errand) c.station=defaultStationFor(c.id); });
@@ -1286,6 +1328,36 @@ function spawnHazard(){
   }
 }
 
+// S4-Carmy: until Claire, he periodically re-assigns HIMSELF to wherever he
+// judges he's needed most — a fire first, then the busiest station he can
+// actually cook, falling back to his best skill. Sensible from his side of
+// it, a real disruption to whatever plan the player had for him.
+function carmyWander(){
+  if(G.flags.claire || G.day<2) return; // the instability arc starts with his day-2 disappearance
+  const c=crewById('carmy');
+  if(!c || c.out || c.errand) return;
+  if(c.wanderAt===undefined){ c.wanderAt=S.time+20+Math.random()*10; return; }
+  if(S.time<c.wanderAt) return;
+  c.wanderAt=S.time+26+Math.random()*14;
+  const onFire=COOK_STATIONS.find(sid=>G.stations[sid].fire);
+  let target=onFire;
+  if(!target){
+    const withWork=COOK_STATIONS.filter(sid=>c.skills[sid]>0).map(sid=>({
+      sid, q:S.tickets.reduce((a,t)=>a+t.dishes.filter(d=>d.station===sid && !d.x86 && d.prog<d.work).length,0)
+    })).sort((a,b)=>b.q-a.q);
+    if(withWork.length && withWork[0].q>0) target=withWork[0].sid;
+  }
+  if(!target){
+    target=Object.entries(c.skills).filter(([sid])=>COOK_STATIONS.includes(sid)).sort((a,b)=>b[1]-a[1])[0][0];
+  }
+  if(target && target!==c.station && !(c.coolT>0) && !(c.runT>0)){
+    const dur=moveDur(c.station, target);
+    showBubble('carmy', rnd(['I got this.','Behind — moving!','This needs me more.','Not now, this first.']));
+    c.moveFromXY=zoneCenter(c.station||target);
+    c.station=target; c.moveT=dur; c.moveDur=dur;
+  }
+}
+
 function update(dt){
   if(!S || S.over || S.paused) return;
   S.time+=dt;
@@ -1305,6 +1377,8 @@ function update(dt){
       }
     }
   });
+
+  carmyWander();
 
   // spawn tickets
   if(S.spawned<S.toSpawn){
@@ -1472,6 +1546,11 @@ function update(dt){
     }
     let gain=heat*(c.trait==='perfection' && !G.flags.claire ? 1.5 : 1);
     if(c.trait==='calm') gain=0;
+    // S4-Carmy is intense to work next to, until he answers Claire (day 2+)
+    if(!G.flags.claire && G.day>=2 && c.id!=='carmy' && c.station
+       && G.crew.some(o=>o.id==='carmy' && o.station===c.station && o.moveT<=0 && !o.out && !o.errand && !(o.coolT>0))){
+      gain+=0.06;
+    }
     let relief=0.08;
     const mates=G.crew.filter(o=>o!==c && o.station===c.station && o.moveT<=0 && !o.out && !o.errand && !(o.coolT>0));
     if(mates.length) relief+=0.1;
