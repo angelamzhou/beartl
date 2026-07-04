@@ -119,7 +119,7 @@
   .b86{font-size:.62rem; padding:0 5px; background:#eee; color:#a33; border:1px solid #a33; border-radius:2px; line-height:1.4;}
   .plated-tag{color:#2a7a3d; font-weight:bold; font-size:.75rem;}
   .tkt{cursor:pointer;}
-  .tkt.fire{box-shadow:0 0 0 2px var(--accent), 2px 2px 0 #00000066;}
+  .tkt.rush{box-shadow:0 0 0 2px var(--accent), 2px 2px 0 #00000066;}
   .ktag{font-size:.6rem; font-weight:bold; padding:0 4px; border-radius:2px; border:1px solid; margin-left:5px; letter-spacing:.05em;}
   .ktag.vip{color:#9a6b00; border-color:#b8860b; background:#f6ecd2;}
   .ktag.reg{color:#777; border-color:#aaa;}
@@ -220,7 +220,7 @@
       <div id="rail"></div>
     </div>
     <div id="roster"></div>
-    <div class="keyhint">SPACE pause · 1-8 select chef · click a station to send them (walking takes time) · click a TICKET to fire it first · [86] a dish · COMP a dying table (needs FOH) · plated food needs a RUNNER (FOH)</div>
+    <div class="keyhint">SPACE pause · 1-8 select chef · click a station to send them (walking takes time) · click a TICKET to call it ON THE FLY — it jumps the queue · [86] a dish · COMP a dying table (needs FOH) · plated food needs a RUNNER (FOH)</div>
   </div>
 
   <!-- SHOP -->
@@ -1256,7 +1256,7 @@ function startService(michelin){
     hazT: 14+Math.random()*8, nextTid:1, banterT:6,
     usedStock:{stove:0, garde:0, pastry:0, window:0},
     tickets:[], banned:[], dirty:0, dirtyCap:12,
-    completed:0, failed:0, earned:0, comped:0, fireTid:null,
+    completed:0, failed:0, earned:0, comped:0, rushTid:null,
     fireRepAcc:0, time:0,
     speedBuff: G.flags.pep?1.15:1,
   };
@@ -1404,17 +1404,19 @@ function compTicket(tid){
   if(G.money<cost){ toast('Can\'t cover the comp tonight.'); return; }
   G.money-=cost; S.comped++;
   S.tickets.splice(i,1);
-  if(S.fireTid===t.id) S.fireTid=null;
+  if(S.rushTid===t.id) S.rushTid=null;
   sfx('bell');
   toast('🥂 '+t.table+' comped — on the house. −$'+cost+', no REP lost.');
   topbar(); renderService(true);
 }
-// the FIRE call — one ticket the whole line works first (cooks claim its
-// dishes first, expo plates it first, the runner takes it first)
+// ON THE FLY — one ticket the whole line pushes first (cooks claim its
+// dishes first, expo plates it first, the runner takes it first). Not
+// called "fire": every dish gets fired in the normal course of service —
+// this is the call for the one that jumps the queue.
 function ticketOrder(){
-  if(!S.fireTid) return S.tickets;
-  const p=S.tickets.find(t=>t.id===S.fireTid);
-  if(!p){ S.fireTid=null; return S.tickets; }
+  if(!S.rushTid) return S.tickets;
+  const p=S.tickets.find(t=>t.id===S.rushTid);
+  if(!p){ S.rushTid=null; return S.tickets; }
   return [p,...S.tickets.filter(t=>t!==p)];
 }
 
@@ -1638,7 +1640,7 @@ function update(dt){
     // cook stations — a dish can only fire if it's already on the stove or there's stock for it
     const workable=d=>d.station===c.station && !d.x86 && d.prog<d.work && (d.stocked || G.stock[c.station]>0);
     let dish=null;
-    const ordered=ticketOrder(); // the FIRE ticket's dishes get claimed first
+    const ordered=ticketOrder(); // the on-the-fly ticket's dishes get claimed first
     outer:
     for(const t of ordered){
       for(let i=0;i<t.dishes.length;i++){
@@ -2035,11 +2037,11 @@ function renderService(force){
     const allDone=t.dishes.every(dishDone);
     const pct=100*t.pat/t.patMax;
     const pc= pct>50?'#5fbf77':(pct>25?'#e0a030':'#e05252');
-    const firing=S.fireTid===t.id;
+    const rushed=S.rushTid===t.id;
     const ktag= t.kind==='vip'?'<span class="ktag vip" title="pays half again more · −2 REP if they walk · impress them fast for +1">VIP</span>'
       : t.kind==='regulars'?'<span class="ktag reg" title="tips well · no REP lost if they walk — the table you can afford to lose">REGULARS</span>':'';
-    th+=`<div class="tkt${firing?' fire':''}" data-tkt="${t.id}" title="${firing?'firing first — click to release':'click to FIRE this ticket — the whole line works it first'}">
-      <div class="thead"><span>#${String(t.id).padStart(3,'0')} ${t.table}${ktag}</span><span>${firing?'<span class="gold" style="font-size:.68rem;">🔥 FIRE</span>':''}${allDone?'<span class="plated-tag">AT THE PASS</span>':''}</span></div>
+    th+=`<div class="tkt${rushed?' rush':''}" data-tkt="${t.id}" title="${rushed?'going out first — click to release':'click to call it ON THE FLY — the whole line pushes this ticket first'}">
+      <div class="thead"><span>#${String(t.id).padStart(3,'0')} ${t.table}${ktag}</span><span>${rushed?'<span class="gold" style="font-size:.68rem;">⚡ ON THE FLY</span>':''}${allDone?'<span class="plated-tag">AT THE PASS</span>':''}</span></div>
       ${t.dishes.map(d=>{
         const done=dishDone(d); const sdef=STATION_DEFS.find(s=>s.id===d.station);
         const btn=(!done && G.tokens>0)?`<button class="b86" data-d86="${d.name}" title="86 this item — strike it from every ticket, off the menu tonight">86</button>`:'';
@@ -2355,8 +2357,8 @@ document.getElementById('service').addEventListener('mousedown', e=>{
   const tk=e.target.closest('[data-tkt]');
   if(tk && S && !S.over){
     const id=+tk.dataset.tkt;
-    S.fireTid = S.fireTid===id ? null : id;
-    if(S.fireTid && !G.flags.hintFire){ G.flags.hintFire=1; toast('📌 “FIRE table '+id+'!” — the whole line works this ticket first: cooks, expo, the runner. Click again to release.'); }
+    S.rushTid = S.rushTid===id ? null : id;
+    if(S.rushTid && !G.flags.hintRush){ G.flags.hintRush=1; toast('⚡ “Table '+id+', ON THE FLY!” — the whole line pushes this ticket first: cooks, expo, the runner. Click again to release.'); }
     renderService(true);
     return;
   }
